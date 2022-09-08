@@ -10,13 +10,8 @@ from pptx import Presentation
 
 
 def add_plot_to_pres(xvals, yvals, colors, step_no, prs):
-    # sc = ax.scatter(xvals, yvals, s=4, c=colors)
-    # sc.set_offsets(np.c_[xvals, yvals])
-    # fig.canvas.draw_idle()
-    # plt.pause(0.1)
     plt.scatter(xvals, yvals, s=4, c=colors)
     plt.title("Markov chain step: %d" % step_no)
-    # plt.draw()
     plt.savefig("/tmp/graph.png", dpi=100)
     slide = prs.slides.add_slide(blank_slide_layout)
     slide.shapes.add_picture("/tmp/graph.png", 0, 0)
@@ -50,7 +45,7 @@ def get_node_coordinates(graph):
 data_dir = "./state_data/"
 data_file = "PA_VTDs.json"
 pres_dir = "./pres_output/"
-pres_file = "slideshow3.pptx"
+pres_file = "slideshow4.pptx"
 markov_chain_steps = 2000
 save_interval = 50
 
