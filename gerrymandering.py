@@ -1,8 +1,9 @@
-from gerrychain import Graph, Partition, MarkovChain
+from gerrychain import Graph, Partition, MarkovChain, constraints
 from gerrychain.updaters import Tally
 from gerrychain.constraints import single_flip_contiguous
-from gerrychain.proposals import propose_random_flip
+from gerrychain.proposals import propose_random_flip, recom
 from gerrychain.accept import always_accept
+from functools import partial
 import matplotlib.pyplot as plt
 from pprint import pprint
 import numpy as np
@@ -10,9 +11,10 @@ from pptx import Presentation
 
 
 def add_plot_to_pres(xvals, yvals, colors, step_no, prs):
-    plt.scatter(xvals, yvals, s=4, c=colors)
+    scat = plt.scatter(xvals, yvals, s=4, c=colors)
     plt.title("Markov chain step: %d" % step_no)
     plt.savefig("/tmp/graph.png", dpi=100)
+    scat.remove()
     slide = prs.slides.add_slide(blank_slide_layout)
     slide.shapes.add_picture("/tmp/graph.png", 0, 0)
 
@@ -46,8 +48,8 @@ data_dir = "./state_data/"
 data_file = "PA_VTDs.json"
 pres_dir = "./pres_output/"
 pres_file = "slideshow4.pptx"
-markov_chain_steps = 2000
-save_interval = 50
+markov_chain_steps = 10000
+save_interval = 1
 
 plt.figure(figsize=(13.0, 8.0))  # plot config
 plt.xlabel("Longitude(degrees)")
@@ -63,9 +65,30 @@ seed_partition = Partition(
     }
 )
 
+ideal_population = sum(
+    seed_partition["population"].values()) / len(seed_partition)
+
+proposal = partial(recom,
+                   pop_col="TOTPOP",
+                   pop_target=ideal_population,
+                   epsilon=0.02,
+                   node_repeats=2
+                   )
+
+compactness_bound = constraints.UpperBound(
+    lambda p: len(p["cut_edges"]),
+    2*len(seed_partition["cut_edges"])
+)
+
+pop_constraint = constraints.within_percent_of_ideal_population(
+    seed_partition, 0.02)
+
 chain = MarkovChain(
-    proposal=propose_random_flip,
-    constraints=[single_flip_contiguous],
+    proposal=proposal,
+    constraints=[
+        pop_constraint,
+        compactness_bound
+    ],
     accept=always_accept,
     initial_state=seed_partition,
     total_steps=markov_chain_steps
@@ -78,9 +101,10 @@ xvals, yvals = get_node_coordinates(seed_partition.graph)
 try:
     count = 0
     for partition in chain:
-        print(count)
+        print("%s%d" % ("Markov chain step: ", count))
         district_colors = get_district_colors(curr_partition=partition)
         if (count % save_interval == 0):
+            print("Added slide")
             add_plot_to_pres(xvals, yvals, district_colors, count, prs)
         count += 1
 except KeyboardInterrupt:
