@@ -8,6 +8,20 @@ import matplotlib.pyplot as plt
 from pprint import pprint
 import numpy as np
 from pptx import Presentation
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+
+colors = np.array(['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080',
+                   '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000'])
+
+
+def generate_legend_handles(partition, colors):
+    district_ids = sorted(partition.parts)
+    handles = []
+    for district_id in district_ids:
+        handles.append(mpatches.Patch(
+            color=colors[district_id], label=("District %d" % district_id)))
+    return handles
 
 
 def add_plot_to_pres(xvals, yvals, colors, step_no, prs):
@@ -21,8 +35,6 @@ def add_plot_to_pres(xvals, yvals, colors, step_no, prs):
 
 def get_district_colors(curr_partition):
     num_nodes = len(curr_partition.graph.nodes)
-    colors = np.array(['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080',
-                       '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000'])
     district_colors = [None]*num_nodes
     count = 0
     for id, node in curr_partition.graph.nodes(data=True):
@@ -94,6 +106,7 @@ chain = MarkovChain(
     total_steps=markov_chain_steps
 )
 
+plt.legend(handles=generate_legend_handles(seed_partition, colors))
 prs = Presentation()
 blank_slide_layout = prs.slide_layouts[6]
 xvals, yvals = get_node_coordinates(seed_partition.graph)
