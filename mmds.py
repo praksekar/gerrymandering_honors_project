@@ -32,18 +32,12 @@ def merge_smds_to_mmds(smd_partition: Partition, config: tuple) -> Partition:
     return
 
 
-def reduce_partition_to_district_graph(partition: Partition, geo_df: GeoDataFrame) -> nx.Graph:
-    G: nx.Graph = nx.Graph()
-    # district_geo_df = geo_df.dissolve(by="CD_2011", as_index=True)
-    G.add_nodes_from(partition.parts)
-    # pos = {}
-    # for part in partition.parts:
-    #     pos[part] = tuple(district_geo_df.geometry[part].centroid.coords)[0]
+def reduce_partition_to_district_graph(partition: Partition) -> nx.Graph:
+    edgelist = []
     for edge in partition["cut_edges"]:
-        G.add_edge(
-            partition.assignment[edge[0]], partition.assignment[edge[1]])
-    # plot_partition(partition, district_geo_df, COLORS)
-    return G
+        edgelist.append(
+            (partition.assignment[edge[0]], partition.assignment[edge[1]]))
+    return nx.Graph(edgelist)
 
 
 def main() -> None:
@@ -54,7 +48,7 @@ def main() -> None:
         graph,
         assignment="CD_2011"
     )
-    reduce_partition_to_district_graph(smd_partition, geo_df)
+    print(reduce_partition_to_district_graph(smd_partition))
 
 
 if __name__ == "__main__":
