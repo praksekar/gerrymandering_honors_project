@@ -46,9 +46,6 @@ def reduce_partition_to_district_graph(partition: Partition, geo_df: GeoDataFram
     return G
 
 
-def
-
-
 def main() -> None:
     geo_df: GeoDataFrame = gp.read_file(SHAPE_FILE)
     print(geo_df.columns)
