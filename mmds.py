@@ -46,20 +46,21 @@ def gen_district_graph(partition: Partition) -> nx.Graph:
     return nx.Graph(edgelist)
 
 
-def random_graph_partition(G: nx.Graph, component_sizes: tuple) -> nx.Graph:
-    max_iterations = 100000
+def district_graph_to_mmds(G: nx.Graph, component_sizes: tuple, rand_cut_iterations: int = 100000, node_repeats: int = 5) -> nx.Graph:
     nparts: int = sum(component_sizes)
-    spanning_tree: nx.Graph = nx.random_spanning_tree(G)
-    for i in range(max_iterations):
-        random_edges: list[tuple] = random.sample(
-            spanning_tree.edges, nparts-1)
-        cut_spanning_tree: nx.Graph = spanning_tree.copy()
-        cut_spanning_tree.remove_edges_from(random_edges)
-        sizes = [len(component)
-                 for component in nx.connected_components(cut_spanning_tree)]
-        if sizes.count(3) == component_sizes[0] and sizes.count(4) == component_sizes[1] and sizes.count(5) == component_sizes[2]:
-            return cut_spanning_tree
-    return "ERROR"
+    for _ in range(node_repeats):
+        spanning_tree: nx.Graph = nx.random_spanning_tree(G)
+        for _ in range(rand_cut_iterations):
+            random_edges: list[tuple] = random.sample(
+                spanning_tree.edges, nparts-1)
+            cut_spanning_tree: nx.Graph = spanning_tree.copy()
+            cut_spanning_tree.remove_edges_from(random_edges)
+            sizes = [len(component)
+                     for component in nx.connected_components(cut_spanning_tree)]
+            if sizes.count(3) == component_sizes[0] and sizes.count(4) == component_sizes[1] and sizes.count(5) == component_sizes[2]:
+                return cut_spanning_tree
+    raise Exception("partitioning failed after %d random cut iterations after %d node repeats" % (
+        rand_cut_iterations, node_repeats))
 
 
 def merge_smds_to_mmds(smd_partition: Partition, config: tuple) -> Partition:
@@ -75,11 +76,18 @@ def main() -> None:
     district_graph: nx.Graph = gen_district_graph(smd_partition)
     district_centroids: dict[int, tuple] = get_district_centroids(
         district_geo_df)
-    plot_partition(smd_partition, precinct_geo_df, COLORS)
-    district_partition = random_graph_partition(district_graph, (3, 1, 1))
-    nx.draw(district_partition, pos=district_centroids,
-            node_size=[10]*len(district_graph.nodes))
-    plt.show()
+    print(district_centroids)
+    district_configs: list[tuple] = gen_mmd_configs(smd_partition)
+    print(district_configs)
+    for district_config in district_configs:
+        print("processing config: %s" % str(district_config))
+        district_partition = district_graph_to_mmds(
+            district_graph, district_config)
+        plot_partition(smd_partition, precinct_geo_df, COLORS)
+        nx.draw(district_partition, pos=district_centroids,
+                node_size=[10]*len(district_graph.nodes))
+        plt.show()
+        plt.clf()
 
 
 if __name__ == "__main__":
