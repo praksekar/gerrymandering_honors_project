@@ -1,10 +1,11 @@
 import gerrychain
+import random
 from gerrychain import Graph, Partition, MarkovChain
 import geopandas as gp
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
-from gerrychain.tree import recursive_tree_part
+from gerrychain.tree import random_spanning_tree
 from geopandas import GeoDataFrame
 import networkx as nx
 
@@ -45,6 +46,22 @@ def gen_district_graph(partition: Partition) -> nx.Graph:
     return nx.Graph(edgelist)
 
 
+def random_graph_partition(G: nx.Graph, component_sizes: tuple) -> nx.Graph:
+    max_iterations = 100000
+    nparts: int = sum(component_sizes)
+    spanning_tree: nx.Graph = nx.random_spanning_tree(G)
+    for i in range(max_iterations):
+        random_edges: list[tuple] = random.sample(
+            spanning_tree.edges, nparts-1)
+        cut_spanning_tree: nx.Graph = spanning_tree.copy()
+        cut_spanning_tree.remove_edges_from(random_edges)
+        sizes = [len(component)
+                 for component in nx.connected_components(cut_spanning_tree)]
+        if sizes.count(3) == component_sizes[0] and sizes.count(4) == component_sizes[1] and sizes.count(5) == component_sizes[2]:
+            return cut_spanning_tree
+    return "ERROR"
+
+
 def merge_smds_to_mmds(smd_partition: Partition, config: tuple) -> Partition:
     return
 
@@ -59,7 +76,9 @@ def main() -> None:
     district_centroids: dict[int, tuple] = get_district_centroids(
         district_geo_df)
     plot_partition(smd_partition, precinct_geo_df, COLORS)
-    nx.draw(district_graph, pos=district_centroids)
+    district_partition = random_graph_partition(district_graph, (3, 1, 1))
+    nx.draw(district_partition, pos=district_centroids,
+            node_size=[10]*len(district_graph.nodes))
     plt.show()
 
 
