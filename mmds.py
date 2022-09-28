@@ -60,24 +60,12 @@ def partition_district_graph(G: nx.Graph, component_sizes: tuple, cut_iterations
 
 def gen_mmd_assignment(smd_partition: Partition, partitioned_district_graph: nx.Graph) -> Partition:
     new_assignment = {}
-    # district_counter = 0
-    # for component in nx.connected_components(partitioned_district_graph):
-    #     nodes = []
-    #     for node in component:
-    #         for precinct in smd_partition.parts[node]:
-    #             nodes.append(precinct)
-    #     new_assignment[district_counter] = frozenset(nodes)
-    #     district_counter += 1
-    # print(list(new_assignment))
     district_counter = 0
     for component in nx.connected_components(partitioned_district_graph):
-        # print("component = " + str(component))
         for part_node in component:
-            # print("part_node = " + str(part_node))
             for precinct_node in smd_partition.parts[part_node]:
                 new_assignment[precinct_node] = district_counter
         district_counter += 1
-    print("new_assignment = " + str(new_assignment))
     return new_assignment
 
 
@@ -85,16 +73,17 @@ def main() -> None:
     precinct_graph: gerrychain.Graph = Graph.from_json(GRAPH_FILE)
     precinct_geometries: GeoSeries = gp.GeoSeries.from_file(SHAPE_FILE)
     smd_partition: Partition = Partition(precinct_graph, assignment=ASSIGNMENT_COL)
-    smd_partition.plot(precinct_geometries, cmap=COLORS)
     smd_graph: nx.Graph = gen_district_graph(smd_partition)
     smd_centroids: dict[int, tuple] = get_district_centroids(smd_partition, precinct_geometries)
-    # mmd_configs: list[tuple] = gen_mmd_configs(smd_partition)
-    # print(mmd_configs)
-    district_partition = partition_district_graph(smd_graph, (0, 2, 2))
-    nx.draw(district_partition, pos=smd_centroids, node_size=[10]*len(smd_graph.nodes))
-    mmd_partition = Partition(precinct_graph, assignment=gen_mmd_assignment(smd_partition, district_partition))
-    mmd_partition.plot(precinct_geometries, cmap=COLORS)
-    plt.show()
+    mmd_configs: list[tuple] = gen_mmd_configs(smd_partition)
+    for mmd_config in mmd_configs:
+        print("showing district config: %s" % str(mmd_config))
+        district_partition = partition_district_graph(smd_graph, mmd_config)
+        mmd_partition = Partition(precinct_graph, assignment=gen_mmd_assignment(smd_partition, district_partition))
+        mmd_partition.plot(precinct_geometries, cmap=COLORS)
+        nx.draw(district_partition, pos=smd_centroids, node_size=[10]*len(smd_graph.nodes))
+        plt.show()
+        plt.clf()
 
 
 if __name__ == "__main__":
