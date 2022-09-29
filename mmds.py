@@ -1,6 +1,7 @@
 import gerrychain
 import random
 from gerrychain import Graph, Partition, MarkovChain
+from gerrychain.updaters import cut_edges, Tally
 import geopandas as gp
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
@@ -18,22 +19,23 @@ COLORS = ListedColormap(['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
 
 
 def plot_partition(partition: Partition, precinct_geometries: GeoSeries, cmap=COLORS):
-    partition.plot(precinct_geometries, cmap=COLORS)
+    partition.plot(precinct_geometries, cmap=cmap)
     centroids : dict[tuple] = get_district_centroids(partition, precinct_geometries)
-    populations = {}
-    total_pop = 0
-    for partID, nodeIDs in partition.parts.items():
-        part_pop = 0
-        for nodeID in nodeIDs:
-            part_pop += int(partition.graph.nodes[nodeID][POP_COL])
-        populations[partID] = part_pop
-        total_pop += part_pop
+    total_pop = get_total_pop(partition)
     for partID, coord in centroids.items():
-        pop_frac = float(populations[partID]/total_pop) * 18
-        plt.text(coord[0], coord[1], "District %d\nPopulation: %d\nPop Frac: %3f/18" % (partID, populations[partID], pop_frac))
+        pop_frac = float(partition["population"][partID]/total_pop) * 18
+        plt.text(coord[0], coord[1], "District %d\nPopulation: %d\nPop Frac: %3f/18" % (partID, partition["population"][partID], pop_frac))
     print("total population: %d" % total_pop)
     plt.show()
     plt.clf()
+
+
+def get_total_pop(partition: Partition):
+    total_pop = 0
+    for partID, nodeIDs in partition.parts.items():
+        for nodeID in nodeIDs:
+            total_pop += int(partition.graph.nodes[nodeID][POP_COL])
+    return total_pop
 
 
 def gen_mmd_configs(smd_partition: Partition) -> list[tuple]:
@@ -98,7 +100,11 @@ def main() -> None:
     for mmd_config in mmd_configs:
         print("showing district config: %s" % str(mmd_config))
         district_partition = partition_district_graph(smd_graph, mmd_config)
-        mmd_partition = Partition(precinct_graph, assignment=gen_mmd_assignment(smd_partition, district_partition))
+        mmd_partition = Partition(
+            precinct_graph, 
+            assignment=gen_mmd_assignment(smd_partition, district_partition),
+            updaters={"cut_edges": cut_edges, "population": Tally(POP_COL)} #representatives updater?
+        )
         plot_partition(mmd_partition, precinct_geometries)
 
 
