@@ -10,10 +10,30 @@ import networkx as nx
 SHAPE_FILE = "./state_data/PA/PA.shp"
 GRAPH_FILE = "./PAjson_wo_geometry"
 ASSIGNMENT_COL = "CD_2011"
+POP_COL = "TOTPOP"
 COLORS = ListedColormap(['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
 '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff',
 '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075',
-'#808080', '#000000'])
+'#808080'])
+
+
+def plot_partition(partition: Partition, precinct_geometries: GeoSeries, cmap=COLORS):
+    partition.plot(precinct_geometries, cmap=COLORS)
+    centroids : dict[tuple] = get_district_centroids(partition, precinct_geometries)
+    populations = {}
+    total_pop = 0
+    for partID, nodeIDs in partition.parts.items():
+        part_pop = 0
+        for nodeID in nodeIDs:
+            part_pop += int(partition.graph.nodes[nodeID][POP_COL])
+        populations[partID] = part_pop
+        total_pop += part_pop
+    for partID, coord in centroids.items():
+        pop_frac = float(populations[partID]/total_pop) * 18
+        plt.text(coord[0], coord[1], "District %d\nPopulation: %d\nPop Frac: %3f/18" % (partID, populations[partID], pop_frac))
+    print("total population: %d" % total_pop)
+    plt.show()
+    plt.clf()
 
 
 def gen_mmd_configs(smd_partition: Partition) -> list[tuple]:
@@ -47,12 +67,10 @@ def partition_district_graph(G: nx.Graph, component_sizes: tuple, cut_iterations
     for _ in range(node_repeats):
         spanning_tree: nx.Graph = nx.random_spanning_tree(G)
         for _ in range(cut_iterations):
-            random_edges: list[tuple] = random.sample(
-                spanning_tree.edges, nparts-1)
+            random_edges: list[tuple] = random.sample(list(spanning_tree.edges), nparts-1)
             cut_spanning_tree: nx.Graph = spanning_tree.copy()
             cut_spanning_tree.remove_edges_from(random_edges)
-            sizes = [len(component)
-                     for component in nx.connected_components(cut_spanning_tree)]
+            sizes = [len(component) for component in nx.connected_components(cut_spanning_tree)]
             if sizes.count(3) == component_sizes[0] and sizes.count(4) == component_sizes[1] and sizes.count(5) == component_sizes[2]:
                 return cut_spanning_tree
     raise Exception("partitioning failed after %d random cut iterations after %d node repeats" % (cut_iterations, node_repeats))
@@ -74,16 +92,14 @@ def main() -> None:
     precinct_geometries: GeoSeries = gp.GeoSeries.from_file(SHAPE_FILE)
     smd_partition: Partition = Partition(precinct_graph, assignment=ASSIGNMENT_COL)
     smd_graph: nx.Graph = gen_district_graph(smd_partition)
-    smd_centroids: dict[int, tuple] = get_district_centroids(smd_partition, precinct_geometries)
+    # smd_centroids: dict[int, tuple] = get_district_centroids(smd_partition, precinct_geometries)
     mmd_configs: list[tuple] = gen_mmd_configs(smd_partition)
+    print(mmd_configs)
     for mmd_config in mmd_configs:
         print("showing district config: %s" % str(mmd_config))
         district_partition = partition_district_graph(smd_graph, mmd_config)
         mmd_partition = Partition(precinct_graph, assignment=gen_mmd_assignment(smd_partition, district_partition))
-        mmd_partition.plot(precinct_geometries, cmap=COLORS)
-        nx.draw(district_partition, pos=smd_centroids, node_size=[10]*len(smd_graph.nodes))
-        plt.show()
-        plt.clf()
+        plot_partition(mmd_partition, precinct_geometries)
 
 
 if __name__ == "__main__":
