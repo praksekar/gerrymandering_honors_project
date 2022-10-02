@@ -49,7 +49,7 @@ def plot_partition(partition: Partition, precinct_geometries: GeoSeries, prs, sh
 
 def count_components(G: nx.Graph) -> int:
     components = [c for c in nx.connected_components(G)]
-    return len(components), components
+    return len(components)
 
 
 def split_graph(graph: nx.Graph, partIDs: tuple, graph_pop: int, pop_target: int, epsilon: float, cut_iterations: int = 100, node_repeats: int = 100) -> dict[int, int]:
@@ -100,8 +100,7 @@ def get_total_pop(partition: Partition, pop_col=POP_COL):
     return total_pop
 
 
-def gen_mmd_configs(smd_partition: Partition) -> list[tuple]:
-    n_reps = len(smd_partition.parts)
+def gen_mmd_configs(n_reps: int) -> list[tuple]:
     configs = []
     for x1 in range(n_reps//3+1):
         for x2 in range(n_reps//4+1):
@@ -126,72 +125,41 @@ def gen_district_graph(partition: Partition) -> nx.Graph:
     return nx.Graph(edgelist)
 
 
-def partition_district_graph(G: nx.Graph, component_sizes: tuple, cut_iterations: int = 100000, node_repeats: int = 5) -> nx.Graph:
-    nparts: int = sum(component_sizes)
+def cut_smd_graph(graph: nx.Graph, mmd_config: tuple, cut_iterations: int = 100000, node_repeats: int = 20) -> nx.Graph:
     for _ in range(node_repeats):
-        spanning_tree: nx.Graph = nx.random_spanning_tree(G)
+        spanning_tree: nx.Graph = nx.random_spanning_tree(graph)
         for _ in range(cut_iterations):
-            random_edges: list[tuple] = random.sample(list(spanning_tree.edges), nparts-1)
+            random_edges: list[tuple] = random.sample(list(spanning_tree.edges), sum(mmd_config)-1)
             spanning_tree.remove_edges_from(random_edges)
             sizes = [len(component) for component in nx.connected_components(spanning_tree)]
-            if sizes.count(3) == component_sizes[0] and sizes.count(4) == component_sizes[1] and sizes.count(5) == component_sizes[2]:
+            if sizes.count(3) == mmd_config[0] and sizes.count(4) == mmd_config[1] and sizes.count(5) == mmd_config[2]:
                 return spanning_tree
             spanning_tree.add_edges_from(random_edges)
     raise Exception("partitioning failed after %d random cut iterations after %d node repeats" % (cut_iterations, node_repeats))
 
 
-def gen_mmd_assignment(smd_partition: Partition, partitioned_district_graph: nx.Graph) -> Partition:
-    new_assignment = {}
-    district_counter = 0
-    for component in nx.connected_components(partitioned_district_graph):
-        for part_node in component:
-            for precinct_node in smd_partition.parts[part_node]:
-                new_assignment[precinct_node] = district_counter
-        district_counter += 1
-    return new_assignment
+def gen_mmd_assignment(smd_partition: Partition) -> Partition:
+    mmd_config = gen_mmd_configs(len(smd_partition.parts))[1]
+    print("mmd config = %s" % str(mmd_config))
+    smd_graph: nx.Graph = gen_district_graph(smd_partition)
+    smd_forest = cut_smd_graph(smd_graph, mmd_config)
+    assignment = {}
+    for idx, component in enumerate(nx.connected_components(smd_forest)):
+        for partID in component:
+            for precID in smd_partition.parts[partID]:
+                assignment[precID] = idx+1
+    return assignment
 
 
 def main() -> None:
-    # precinct_graph: gerrychain.Graph = Graph.from_json(GRAPH_FILE)
-    # precinct_geometries: GeoSeries = gp.GeoSeries.from_file(SHAPE_FILE)
-    precinct_geo_df: GeoDataFrame = gp.GeoDataFrame.from_file(SHAPE_FILE)
-    precinct_geometries: GeoSeries = precinct_geo_df["geometry"]
-    # for geometry in precinct_geometries:
-    #     print(geometry.geom_type)
-    precinct_graph: gerrychain.Graph = Graph.from_geodataframe(dataframe=precinct_geo_df)
-    print(precinct_geo_df)
-    # print(len(precinct_geo_df))
-    # print(len(precinct_graph.nodes))
-    # print(len(precinct_geometries))
-    smd_partition: Partition = Partition(precinct_graph, assignment=SMD_ASSIGNMENT_COL)
-    smd_graph: nx.Graph = gen_district_graph(smd_partition)
-    mmd_configs: list[tuple] = gen_mmd_configs(smd_partition)
-    mmd_config = mmd_configs[0]
-    print("mmd config: %s" % str(mmd_config))
-    district_partition = partition_district_graph(smd_graph, mmd_config)
-    mmd_partition = Partition(
-        precinct_graph, 
-        assignment=gen_mmd_assignment(smd_partition, district_partition),
+    prec_graph: gerrychain.Graph = Graph.from_json(GRAPH_FILE)
+    prec_geometries: GeoSeries = GeoSeries.from_file(SHAPE_FILE)
+    smd_partition: Partition = Partition(prec_graph, assignment=SMD_ASSIGNMENT_COL)
+    mmd_partition : Partition = Partition(
+        prec_graph, 
+        assignment=gen_mmd_assignment(smd_partition),
         updaters={"cut_edges": cut_edges, "population": Tally(POP_COL, "population")} 
     )
-
-    prs = Presentation()
-    plot_partition(smd_partition, precinct_geometries, prs=None, show=False)
-    for partID, subgraph in smd_partition.subgraphs.items():
-        n, components = count_components(subgraph)
-        if n > 1:
-            print("SMD District %d components: %d" % (partID, n))
-            print("components = " + str(components))
-            comp_size = 9999999
-            for component in components:
-                if len(component) < comp_size:
-                    min_comp = component
-            print("min_comp = " + str(min_comp))
-            df = precinct_geo_df.loc[list(min_comp)]
-            # for nodeID in min_comp:
-            df.plot(color="#000000")
-    plt.show()
-
 
     for partID in mmd_partition.parts:
         print("MMD District %d components: %d" % (partID, count_components(mmd_partition.graph.subgraph(mmd_partition.parts[partID]))))
@@ -208,12 +176,13 @@ def main() -> None:
         total_steps=MARKOV_CHAIN_STEPS
     )
 
+    prs = Presentation()
     count = 0
     try:
         for partition in chain:
             print("step: %d" % count)
             print("partition components: %d" % count_components(partition.graph))
-            plot_partition(partition, precinct_geometries, prs=prs, show=False)
+            plot_partition(partition, prec_geometries, prs=prs, show=False)
             count += 1
     except KeyboardInterrupt:
         prs.save("%s" % PRES_FILE)
