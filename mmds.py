@@ -1,4 +1,6 @@
 import random
+from disjoint_set import DisjointSet
+from linetimer import CodeTimer
 import time
 from functools import partial
 import gerrychain
@@ -17,6 +19,7 @@ SHAPE_FILE = "./state_data/PA/PA.shp"
 GRAPH_FILE = "./PAjson_wo_geometry"
 PRES_FILE = "./pres_output/mmd_recom2"
 SMD_ASSIGNMENT_COL = "CD_2011"
+PLOT_INTERVAL = 50
 POP_COL = "TOTPOP"
 COLORS = ListedColormap(['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
 '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff',
@@ -47,26 +50,14 @@ def count_components(G: nx.Graph) -> int:
     return len([c for c in nx.connected_components(G)])
 
 
-def tree_pop(tree, root):
-    pop = 0
-    for nodeID in nx.dfs_postorder_nodes(tree, source=root):
-        pop += tree.nodes[nodeID][POP_COL]
-    return pop
-
-
-def find_edge_pop_split(spanning_tree: nx.Graph) -> tuple:
-    root = random.choice(spanning_tree.nodes)
-    dfs_tree = nx.dfs_tree(spanning_tree, source=root)
-
-
 recursive_calls = 0
-def rec(tree: Graph, curr_node: int, parent: int, graph_pop: int, pop_rng: tuple) -> tuple:
+def rec(graph, tree: Graph, curr_node: int, parent: int, graph_pop: int, pop_rng: tuple) -> tuple:
     global recursive_calls
     recursive_calls += 1
-    sum = tree.nodes[curr_node][POP_COL] 
+    sum = graph.nodes[curr_node][POP_COL] 
     for child in tree.neighbors(curr_node):
         if child != parent:
-            child_sum, found_edge = rec(tree, child, curr_node, graph_pop, pop_rng) 
+            child_sum, found_edge = rec(graph, tree, child, curr_node, graph_pop, pop_rng) 
             if found_edge is not None:
                 return (None, found_edge)
             sum += child_sum
@@ -75,46 +66,41 @@ def rec(tree: Graph, curr_node: int, parent: int, graph_pop: int, pop_rng: tuple
     return (sum, None)
 
 
-def split_graph_by_pop2(graph: nx.Graph, pop_target: int, graph_pop: int, epsilon: float, node_repeats: int = 30) -> tuple[list[int]]:
+def split_graph_by_pop(graph: nx.Graph, pop_target: int, graph_pop: int, epsilon: float, node_repeats: int = 30) -> tuple[list[int]]:
     global recursive_calls
     recursive_calls = 0
     pop_rng = (pop_target * (1 - epsilon), pop_target * (1 + epsilon))
+    graph_edges = list(graph.edges)
     for i in range(node_repeats):
-        t = time.process_time_ns()
-        spanning_tree = random_spanning_tree(graph)
-        elapsed_time = time.process_time_ns() - t
-        print("spanning tree creation elapsed time: %d" % elapsed_time)
+        with CodeTimer("create spanning tree"):
+            spanning_tree = gen_random_spanning_tree(graph, graph_edges)
         root = random.choice(list(spanning_tree.nodes))
-        t = time.process_time_ns()
-        sum, cut_edge = rec(spanning_tree, root, None, graph_pop, pop_rng)
-        elapsed_time = time.process_time_ns() - t
-        print("find edge elapsed time: %d" % elapsed_time)
+        with CodeTimer("dfs to find cut edge"):
+            sum, cut_edge = rec(graph, spanning_tree, root, None, graph_pop, pop_rng)
         if cut_edge is not None:
             print("finished recom after %d random spanning trees and %d recursive calls on %d nodes" % (i+1, recursive_calls, len(spanning_tree.nodes)))
             spanning_tree.remove_edge(cut_edge[0], cut_edge[1])
-            return([node for node in nx.dfs_postorder_nodes(spanning_tree, source=cut_edge[0])],
-                   [node for node in nx.dfs_postorder_nodes(spanning_tree, source=cut_edge[1])])
+            with CodeTimer("get left and right components"):
+                comp_1 = [node for node in nx.dfs_postorder_nodes(spanning_tree, source=cut_edge[0])]
+                comp_2 = [node for node in nx.dfs_postorder_nodes(spanning_tree, source=cut_edge[1])]
+            return(comp_1, comp_2)
     raise Exception("partitioning failed")
 
+
+def gen_random_spanning_tree(graph: nx.Graph, edges):
+    spanning_forest = nx.Graph()
+    spanning_forest.add_nodes_from(graph.nodes)
+    random.shuffle(edges)
+    ds = DisjointSet()
+    for node in spanning_forest.nodes:
+        ds.find(node)
+    for u, v in edges:
+        if not ds.connected(u, v):
+            spanning_forest.add_edge(u, v)
+            ds.union(u, v)
+    return spanning_forest
+
  
-def split_graph_by_pop(graph: nx.Graph, pop_target: int, graph_pop: int, epsilon: float, node_repeats: int = 10) -> tuple[list[int]]:
-    pop_rng = (pop_target * (1 - epsilon), pop_target * (1 + epsilon))
-    for i in range(node_repeats):
-        spanning_tree = random_spanning_tree(graph)
-        edges_left = set(spanning_tree.edges)
-        for j in range(len(edges_left)):
-            rand_edge = random.choice(list(edges_left))
-            spanning_tree.remove_edge(rand_edge[0], rand_edge[1])
-            comp_pop = tree_pop(spanning_tree, rand_edge[0])
-            if pop_rng[0] <= comp_pop <= pop_rng[1] or pop_rng[0] <= graph_pop-comp_pop <= pop_rng[1]:
-                print("finished recom after %d iterations" % ((i+1)*(j+1)))
-                return([node for node in nx.dfs_postorder_nodes(spanning_tree, source=rand_edge[0])],
-                       [node for node in nx.dfs_postorder_nodes(spanning_tree, source=rand_edge[1])])
-            spanning_tree.add_edge(rand_edge[0], rand_edge[1])
-            edges_left.remove(rand_edge)
-    raise Exception("partitioning failed after %d random cut iterations after %d node repeats" % (len(edges_left), node_repeats))
-
-
 def mmd_recom(partition: Partition, epsilon: float) -> Partition:
     edge = random.choice(list(partition["cut_edges"]))
     partIDs = (partition.assignment[edge[0]], partition.assignment[edge[1]])
@@ -123,10 +109,7 @@ def mmd_recom(partition: Partition, epsilon: float) -> Partition:
     print("subgraph components = %d" % count_components(merged_subgraph))
     pop_target = partition["population"][partIDs[0]] 
     subgraph_pop = pop_target + partition["population"][partIDs[1]] 
-    t = time.process_time_ns()
-    components = split_graph_by_pop2(merged_subgraph.graph, pop_target, subgraph_pop, epsilon)
-    elapsed_time = time.process_time_ns() - t
-    print("recom elapsed time: %d" % elapsed_time)
+    components = split_graph_by_pop(merged_subgraph.graph, pop_target, subgraph_pop, epsilon)
     flips = dict.fromkeys(components[0], partIDs[0]) | dict.fromkeys(components[1], partIDs[1]) 
     return partition.flip(flips)
 
@@ -204,10 +187,15 @@ def main() -> None:
     )
 
     try:
+        prev_time = time.process_time_ns()
         for stepno, partition in enumerate(chain):
+            curr_time = time.process_time_ns()
+            print("chain step total time: %d ms" % (float(curr_time-prev_time)/1000000))
+            prev_time = curr_time
             print("step: %d" % stepno)
             print("partition components: %d" % count_components(partition.graph))
-            # plot_partition(partition, prec_geometries, prs=prs, show=False)
+            if stepno % PLOT_INTERVAL == 0:
+                plot_partition(partition, prec_geometries, prs=prs, show=False)
     except KeyboardInterrupt:
         print("keyboard interrupt")
     finally:
