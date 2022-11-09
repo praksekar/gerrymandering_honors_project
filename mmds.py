@@ -26,10 +26,10 @@ COLORS = ListedColormap(['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
 '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075',
 '#808080'])
 
-class MMD_Partition(Partition):
-    def __init__(self, graph=None, assignment=None, updaters=None, parent=None, flips=None, use_default_updaters=True):
-        super().__init__(self, graph, assignment, updaters, parent, flips, use_default_updaters)
-        self.
+# class MMD():
+#     def __init__(self, partition, district_reps):
+#         self.partition = partition
+#         self.district_reps = district_reps
 
 
 def add_plot_to_pres(prs):
@@ -39,13 +39,13 @@ def add_plot_to_pres(prs):
     print("slide added")
 
 
-def plot_partition(partition: Partition, precinct_geometries: GeoSeries, prs, show=False, cmap=COLORS):
+def plot_partition(partition: Partition, precinct_geometries: GeoSeries, prs, district_reps: dict[int, int], show=False, cmap=COLORS):
     # plt.title("Markov chain step: %d" % chain_step)
     partition.plot(precinct_geometries, cmap=cmap)
-    centroids : dict[int, tuple] = get_district_centroids(partition, precinct_geometries)
-    for partID, coord in centroids.items():
-        pop_frac = float(partition["population"][partID]/sum(partition["population"].values())) * 18
-        plt.text(coord[0], coord[1], "District %d\nPopulation: %d\nPop Frac: %3f/18" % (partID, partition["population"][partID], pop_frac))
+    centroids: dict[int, tuple] = get_district_centroids(partition, precinct_geometries)
+    for districtID, coord in centroids.items():
+        pop_frac = float(partition["population"][districtID]/sum(partition["population"].values())) * 18
+        plt.text(coord[0], coord[1], "District %d\nPopulation: %d\nPop Frac: %3f/18\n, num reps: %d" % (districtID, partition["population"][districtID], pop_frac, district_reps[districtID]))
     if prs is not None:
         add_plot_to_pres(prs)
     if show:
@@ -62,10 +62,12 @@ def find_cut(graph, tree: Graph, curr_node: int, parent: int, graph_pop: int, po
         if child != parent:
             child_sum, edge_found = find_cut(graph, tree, child, curr_node, graph_pop, pop_rng) 
             if edge_found:
-                return (None, edge_found)
+                return (child_sum, edge_found)
             sum += child_sum
-    if pop_rng[0] <= sum <= pop_rng[1] or pop_rng[0] <= graph_pop-sum <= pop_rng[1]:
-        return (None, (curr_node, parent))
+    if pop_rng[0] <= sum <= pop_rng[1]:
+        return (True, (curr_node, parent))
+    elif pop_rng[0] <= graph_pop-sum <= pop_rng[1]:
+        return (False, (curr_node, parent))
     return (sum, None)
 
 
@@ -76,13 +78,14 @@ def split_graph_by_pop(graph: nx.Graph, pop_target: int, graph_pop: int, epsilon
         with CodeTimer("create spanning tree"):
             spanning_tree = rand_spanning_tree(graph, graph_edges)
         root = random.choice(list(spanning_tree.nodes))
-        sum, cut_edge = find_cut(graph, spanning_tree, root, None, graph_pop, pop_rng)
+        complement_or_not, cut_edge = find_cut(graph, spanning_tree, root, None, graph_pop, pop_rng)
+        print("complement or not = " + str(complement_or_not))
         if cut_edge:
             print("finished recom after %d random spanning trees on %d nodes" % (i+1, len(spanning_tree.nodes)))
             spanning_tree.remove_edge(cut_edge[0], cut_edge[1])
             comp_1 = [node for node in nx.dfs_postorder_nodes(spanning_tree, source=cut_edge[0])]
             comp_2 = [node for node in nx.dfs_postorder_nodes(spanning_tree, source=cut_edge[1])]
-            return(comp_1, comp_2)
+            return((comp_1, comp_2), complement_or_not)
     raise Exception("partitioning failed")
 
 
@@ -100,16 +103,20 @@ def rand_spanning_tree(graph: nx.Graph, edges):
     return spanning_forest
 
  
-def mmd_recom(partition: Partition, epsilon: float) -> Partition:
+def mmd_recom(partition: Partition, district_reps: dict[int, int], epsilon: float) -> Partition:
     edge = random.choice(list(partition["cut_edges"]))
     partIDs = (partition.assignment[edge[0]], partition.assignment[edge[1]])
     print("doing recom on districts %d, %d" % (partIDs[0], partIDs[1]))
     merged_subgraph = partition.graph.subgraph(partition.parts[partIDs[0]] | partition.parts[partIDs[1]])
     print("subgraph components = %d" % count_components(merged_subgraph))
-    pop_target = partition["population"][partIDs[0]] 
-    subgraph_pop = pop_target + partition["population"][partIDs[1]] 
-    components = split_graph_by_pop(merged_subgraph.graph, pop_target, subgraph_pop, epsilon)
-    flips = dict.fromkeys(components[0], partIDs[0]) | dict.fromkeys(components[1], partIDs[1]) 
+    subgraph_pop = partition["population"][partIDs[0]] + partition["population"][partIDs[1]] 
+    subgraph_reps = district_reps[partIDs[0]] + district_reps[partIDs[1]]
+    pop_target = (float(district_reps[partIDs[0]])/subgraph_reps)*subgraph_pop
+    components, complement_or_not = split_graph_by_pop(merged_subgraph.graph, pop_target, subgraph_pop, epsilon)
+    if complement_or_not: # component 0 matches the target pop
+        flips = dict.fromkeys(components[0], partIDs[0]) | dict.fromkeys(components[1], partIDs[1]) 
+    else:
+        flips = dict.fromkeys(components[0], partIDs[1]) | dict.fromkeys(components[1], partIDs[0]) 
     return partition.flip(flips)
 
 
@@ -151,22 +158,24 @@ def cut_smd_graph(graph: nx.Graph, mmd_config: tuple, cut_iterations: int = 1000
     raise Exception("partitioning failed after %d random cut iterations after %d node repeats" % (cut_iterations, node_repeats))
 
 
-def gen_mmd_seed_assignment(smd_partition: Partition) -> dict[int, int]:
+def gen_mmd_seed_assignment(smd_partition: Partition) -> tuple[dict[int, int], dict[int, int]]:
     mmd_config = gen_mmd_configs(len(smd_partition.parts))[1]
     print("mmd config = %s" % str(mmd_config))
     smd_graph: nx.Graph = gen_smd_graph(smd_partition)
-    smd_forest = cut_smd_graph(smd_graph, mmd_config)
-    assignment = {}
+    with CodeTimer("cutting smd graph into desired proportions"):
+        smd_forest = cut_smd_graph(smd_graph, mmd_config)
+    prec_assignment = {}
+    n_district_reps = {}
     for idx, component in enumerate(nx.connected_components(smd_forest)):
+        n_district_reps[idx+1] = len(component)
         for partID in component:
             for precID in smd_partition.parts[partID]:
-                assignment[precID] = idx+1
-    return assignment
+                prec_assignment[precID] = idx+1
+    return prec_assignment, n_district_reps
 
 
 def gen_random_map(chain: MarkovChain) -> Partition:
     for partition in chain:
-        partition.test_field = 3
         continue
     return partition
 
@@ -175,8 +184,58 @@ def gen_ensemble(chain: MarkovChain, num_maps) -> list[Partition]:
     return [gen_random_map(chain) for _ in range(num_maps)]
 
 
-# def precinct_ranked_choice(district: Partition, precinctID: int) -> list:
+def district_election(partition: Partition, districtID: int, nreps: int):
+    all_district_votes = [], rep_candidates = [], dem_candidates = []
+    for i in range(nreps): # assuming each party has the same number of candidates as seats
+        rep_candidates.append("R" + str(i+1)) # need a better way of representing democrat
+        dem_candidates.append("D" + str(i+1)) # and republican besides using string
+    for precinctID in partition.parts[districtID]:
+        all_district_votes += party_line_voting(partition.graph.nodes[precinctID], rep_candidates, dem_candidates)
+    run_tabulation_rounds(all_district_votes, rep_candidates, dem_candidates, nreps)
+
+
+# following tabulation strategy as described starting here in HR 3863: https://www.congress.gov/bill/117th-congress/house-bill/3863/text#HC983752E3E3749CDB3BE3B234B4E832C
+def run_tabulation_rounds(district_votes, rep_candidates, dem_candidates, n_required_candidates):
+    winning_candidates = []
+    candidate_tally: dict[str, tuple[int, int]] = dict.fromkeys(rep_candidates + dem_candidates, (0, 1))
+    threshold = float(len(district_votes))/(n_required_candidates+1)
+    for vote_idx in range(len(district_votes)):
+        for ranked_choice_idx in range(len(rep_candidates + dem_candidates)):
+            candidate_tally[district_votes[vote_idx][ranked_choice_idx]][0] += 1
+            if len(candidate_tally) + len(winning_candidates) > n_required_candidates and max(candidate_tally.values()[0]) > threshold:
+                candidate_tally = surplus_tabulation_round(candidate_tally, winning_candidates)
+            elif len(candidate_tally) + len(winning_candidates) > n_required_candidates and max(candidate_tally.values()[0]) < threshold:
+                candidate_tally = candidate_elimination_round(candidate_tally, winning_candidates)
+            else:
+                return winning_candidates
+
+
+def surplus_tabulation_round(candidate_tally, winning_candidates, threshold):
+    for candidate, num_votes, vote_weight in candidate_tally:
+        if num_votes > threshold:
+            winning_candidates += candidate
+            surplus_fraction = float(num_votes - threshold)/num_votes
+            vote_weight *= surplus_fraction
     
+
+def candidate_elimination_round(candidate_tally):
+
+# Each voting function takes in a precinct and a list of candidates and returns
+# a list of ranked choice votes for each voter in the precinct.
+# This voting function assumes that all people in this precinct who voted
+# democrat in the last election will rank all democrats before republicans
+# with random intra-party preference.
+def party_line_voting(precinct: dict[str, int | str], rep_candidates: list, dem_candidates: list) -> list:
+    precinct_votes = []
+    for _ in range(int(precinct["PRES12D"])):
+        random.shuffle(dem_candidates)
+        random.shuffle(rep_candidates)
+        precinct_votes += [dem_candidates + rep_candidates]
+    for _ in range(int(precinct["PRES12R"])):
+        random.shuffle(dem_candidates)
+        random.shuffle(rep_candidates)
+        precinct_votes += [rep_candidates + dem_candidates]
+    return precinct_votes
 
 
 # def ranked_choice_election(partition: Partition, voting_function: Callable[[]] = party_line_voting)
@@ -195,25 +254,29 @@ def main() -> None:
     prec_geometries: GeoSeries = GeoSeries.from_file(SHAPE_FILE)
     smd_partition: Partition = Partition(prec_graph, assignment=SMD_ASSIGNMENT_COL)
 
-    mmd_partition : Partition = Partition(
-        prec_graph, 
-        assignment=gen_mmd_seed_assignment(smd_partition),
-        updaters={"cut_edges": cut_edges, "population": Tally(POP_COL, "population")} 
+    mmd_assignment, mmd_n_district_reps = gen_mmd_seed_assignment(smd_partition)
+
+    mmd_partition: Partition = Partition(
+        graph=prec_graph, 
+        assignment=mmd_assignment,
+        updaters={"cut_edges": cut_edges, "population": Tally(POP_COL, "population")},
     )
 
+    print(mmd_partition.graph.nodes[0])
+    district_election(mmd_partition, 1, 3)
     chain = MarkovChain(
-        partial(mmd_recom, epsilon=0.01),
+        partial(mmd_recom, district_reps=mmd_n_district_reps, epsilon=0.01),
         [],
         always_accept,
         mmd_partition,
-        total_steps=10
+        total_steps=100
     )
 
-    ensemble: list[Partition] = gen_ensemble(chain, 10)
-    for partition in ensemble:
-        plot_partition(partition, prec_geometries, prs, show=False)
-    prs.save("%s" % PRES_FILE)
-    print("done, saved as %s" % PRES_FILE)
+    # ensemble: list[partition] = gen_ensemble(chain, 20)
+    # for partition in ensemble:
+    #     plot_partition(partition, prec_geometries, prs, mmd_n_district_reps, show=false)
+    # prs.save("%s" % pres_file)
+    # print("done, saved as %s" % PRES_FILE)
 
     # try:
     #     prev_time = time.process_time_ns()
