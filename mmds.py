@@ -1,3 +1,9 @@
+# TODO: Use proper logger for CodeTimer and other diagnostic output
+# TODO: update documentation for gen_mmd_seed_assignment() as we are now passing in an mmd config
+# TODO: encapsulate Partition and mmd_config into the same data structure
+# TODO: fix complement_or_not logic; it is very confusing
+
+
 import random
 from disjoint_set import DisjointSet
 from linetimer import CodeTimer
@@ -13,6 +19,8 @@ from gerrychain.updaters import Tally, cut_edges
 from matplotlib.colors import ListedColormap
 from pptx import Presentation
 from typing import Callable
+import itertools
+flatten = itertools.chain.from_iterable
 
 
 SHAPE_FILE = "./state_data/PA/PA.shp"
@@ -104,6 +112,32 @@ def rand_spanning_tree(graph: nx.Graph, edges):
 
  
 def mmd_recom(partition: Partition, district_reps: dict[int, int], epsilon: float) -> Partition:
+    """
+    Computes next partition after one step of MMD ReCom. This is a proposal
+    function that can be provided to the gerrychain MarkovChain constructor.
+    ReCom algorithm works by merging two adjacent MMD subgraphs, then splitting
+    the merged district along a boundary in which each part has a population
+    ratio that matches (within the input epsilon's error) the number of
+    representatives in that district.
+
+    i.e. if districts A and B are chosen to be merged, and have 3 and 5
+    representatives respectively, re-split them into two parts where one part
+    has 3/8ths of the combined population and the other part has 5/8ths of the
+    combined population.
+
+    To improve intuitiveness of the algorithm, districts will retain the same
+    number of representatives throughout all steps of ReCom as specified by
+    district_reps.
+
+    Arguments:
+        partition: an MMD partition
+        district_reps: dictionary mapping MMD ID to its assigned number of
+        representatives
+        epsilon: acceptable population error threshold for split
+    Returns:
+        a new MMD partition
+    """
+
     edge = random.choice(list(partition["cut_edges"]))
     partIDs = (partition.assignment[edge[0]], partition.assignment[edge[1]])
     print("doing recom on districts %d, %d" % (partIDs[0], partIDs[1]))
@@ -121,12 +155,27 @@ def mmd_recom(partition: Partition, district_reps: dict[int, int], epsilon: floa
 
 
 def gen_mmd_configs(n_reps: int) -> list[tuple]:
+    """
+    Generates a list of tuples that represent all possible MMD configurations
+    given a number of representatives. Each tuple has 3 elements, where the 0th,
+    1st and 2nd indexed elements represent the number of districts with 3, 4,
+    and 5 representatives, respectively. Each such unique tuple will hereon be
+    referred to as an "MMD config."
+
+    Arguments:
+        n_reps: number of representatives in the state
+    Returns:
+        List of MMD config 3-tuples
+    """
+
     configs = []
     for x1 in range(n_reps//3+1):
         for x2 in range(n_reps//4+1):
             for x3 in range(n_reps//5+1):
                 if x1*3 + x2*4 + x3*5 == n_reps:
-                    configs.append((x1, x2, x3))
+                    configs.append(dict.fromkeys(range(1, x1+1), 3) 
+                        | dict.fromkeys(range(x1+1, x1+x2+1), 4) 
+                        | dict.fromkeys(range(x1+x2+1, x1+x2+x3+1), 5))
     return configs
 
 
@@ -138,40 +187,93 @@ def get_district_centroids(partition: Partition, precinct_geometries: GeoSeries)
     return district_centroids
 
 
-def gen_smd_graph(partition: Partition) -> nx.Graph:
+def gen_smd_adjacency_graph(partition: Partition) -> nx.Graph:
+    """
+    Constructs an SMD adjacency graph based on the SMD assignments of the input
+    partition.
+
+    Arguments:
+        partition: gerrychain Partition initialized with an SMD assignment
+    Returns:
+        networkx Graph of SMDs
+    """
+
     edgelist = []
     for edge in partition["cut_edges"]:
         edgelist.append((partition.assignment[edge[0]], partition.assignment[edge[1]]))
     return nx.Graph(edgelist)
 
 
-def cut_smd_graph(graph: nx.Graph, mmd_config: tuple, cut_iterations: int = 100000, node_repeats: int = 20) -> nx.Graph:
+def cut_smd_adjacency_graph(graph: nx.Graph, mmd_config: dict[int, int], cut_iterations: int = 100000, node_repeats: int = 20) -> nx.Graph:
+    """
+    Attempts to partition input SMD adjacency graph into connected subgraphs
+    with sizes that correspond to each district in the MMD config.  Generates
+    random spanning tree of SMD graph and randomly cuts away the # of districts
+    in the MMD config - 1. If the number of nodes in each of the cut spanning
+    tree's subgraphs match the proportions of the MMD config, it is returned.
+
+    Arguments:
+        graph: SMD adjacency graph
+        mmd_config: MMD config
+        cut_iterations: max number of cut attempts for the randomly generated
+        spanning tree
+        node_repeats: max number of spanning trees to build
+    Returns:
+        networkx Graph spanning tree forest that matches input MMD config's
+        proportions
+    """
+
+    config_sizes = sorted(list(mmd_config.values()))
     for _ in range(node_repeats):
         spanning_tree: nx.Graph = rand_spanning_tree(graph, list(graph.edges))
+        edges = list(spanning_tree.edges)
         for _ in range(cut_iterations):
-            random_edges: list[tuple] = random.sample(list(spanning_tree.edges), sum(mmd_config)-1)
+            random_edges: list[tuple] = random.sample(edges, len(mmd_config)-1)
             spanning_tree.remove_edges_from(random_edges)
-            sizes = [len(component) for component in nx.connected_components(spanning_tree)]
-            if sizes.count(3) == mmd_config[0] and sizes.count(4) == mmd_config[1] and sizes.count(5) == mmd_config[2]:
+            forest_sizes = [len(component) for component in nx.connected_components(spanning_tree)]
+            if sorted(forest_sizes) == config_sizes:
                 return spanning_tree
             spanning_tree.add_edges_from(random_edges)
     raise Exception("partitioning failed after %d random cut iterations after %d node repeats" % (cut_iterations, node_repeats))
 
 
-def gen_mmd_seed_assignment(smd_partition: Partition) -> tuple[dict[int, int], dict[int, int]]:
-    mmd_config = gen_mmd_configs(len(smd_partition.parts))[1]
-    print("mmd config = %s" % str(mmd_config))
-    smd_graph: nx.Graph = gen_smd_graph(smd_partition)
-    with CodeTimer("cutting smd graph into desired proportions"):
-        smd_forest = cut_smd_graph(smd_graph, mmd_config)
+def gen_mmd_seed_assignment(smd_partition: Partition, mmd_config: dict[int, int]) -> tuple[dict[int, int], dict[int, int]]:
+    """
+    Generates the seed MMDs by gluing together adjacent SMD districts such that
+    the MMDs that have a population proportion that matches the number of
+    representatives are assigned (as specified by mmd_config)
+
+    Generates initial MMD assignment dict that maps precinct IDs to district
+    IDs. This will be used as the assignment parameter to the gerrychain
+    Partition constructor. Algorithm steps are as follows:
+
+    1. It picks an MMD config
+    2. Generates an SMD adjacency graph based on the input partition
+    3. Cuts this SMD graph into subgraphs that follow the proportions of the
+    selected MMD config
+    4. Assigns each precinct in the input partition based on the partitioned SMD
+    graph
+
+    Arguments:
+        partition: gerrychain Partition initialized with an SMD assignment
+    Returns:
+        1. assignment dictionary mapping precinct IDs to district IDs
+        2. dictionary mapping district IDs to their number of representatives
+    """
+
+    smd_graph: nx.Graph = gen_smd_adjacency_graph(smd_partition)
+    with CodeTimer("cutting smd graph into proportions specified by config"):
+        smd_forest = cut_smd_adjacency_graph(smd_graph, mmd_config)
+    components = [c for c in nx.connected_components(smd_forest)]
     prec_assignment = {}
-    n_district_reps = {}
-    for idx, component in enumerate(nx.connected_components(smd_forest)):
-        n_district_reps[idx+1] = len(component)
-        for partID in component:
-            for precID in smd_partition.parts[partID]:
-                prec_assignment[precID] = idx+1
-    return prec_assignment, n_district_reps
+    for districtID, n_reps in mmd_config.items():
+        for component in components:
+            if len(component) == n_reps:
+                component_precIDs = flatten([smd_partition.parts[n] for n in component])
+                prec_assignment = prec_assignment | dict.fromkeys(component_precIDs, districtID)
+                components.remove(component)
+                break
+    return prec_assignment
 
 
 def gen_random_map(chain: MarkovChain) -> Partition:
@@ -184,30 +286,30 @@ def gen_ensemble(chain: MarkovChain, num_maps) -> list[Partition]:
     return [gen_random_map(chain) for _ in range(num_maps)]
 
 
-def district_election(partition: Partition, districtID: int, nreps: int):
-    all_district_votes = [], rep_candidates = [], dem_candidates = []
-    for i in range(nreps): # assuming each party has the same number of candidates as seats
-        rep_candidates.append("R" + str(i+1)) # need a better way of representing democrat
-        dem_candidates.append("D" + str(i+1)) # and republican besides using string
-    for precinctID in partition.parts[districtID]:
-        all_district_votes += party_line_voting(partition.graph.nodes[precinctID], rep_candidates, dem_candidates)
-    run_tabulation_rounds(all_district_votes, rep_candidates, dem_candidates, nreps)
+# def district_election(partition: Partition, districtID: int, nreps: int):
+#     all_district_votes = [], rep_candidates = [], dem_candidates = []
+#     for i in range(nreps): # assuming each party has the same number of candidates as seats
+#         rep_candidates.append("R" + str(i+1)) # need a better way of representing democrat
+#         dem_candidates.append("D" + str(i+1)) # and republican besides using string
+#     for precinctID in partition.parts[districtID]:
+#         all_district_votes += party_line_voting(partition.graph.nodes[precinctID], rep_candidates, dem_candidates)
+#     run_tabulation_rounds(all_district_votes, rep_candidates, dem_candidates, nreps)
 
 
 # following tabulation strategy as described starting here in HR 3863: https://www.congress.gov/bill/117th-congress/house-bill/3863/text#HC983752E3E3749CDB3BE3B234B4E832C
-def run_tabulation_rounds(district_votes, rep_candidates, dem_candidates, n_required_candidates):
-    winning_candidates = []
-    candidate_tally: dict[str, tuple[int, int]] = dict.fromkeys(rep_candidates + dem_candidates, (0, 1))
-    threshold = float(len(district_votes))/(n_required_candidates+1)
-    for vote_idx in range(len(district_votes)):
-        for ranked_choice_idx in range(len(rep_candidates + dem_candidates)):
-            candidate_tally[district_votes[vote_idx][ranked_choice_idx]][0] += 1
-            if len(candidate_tally) + len(winning_candidates) > n_required_candidates and max(candidate_tally.values()[0]) > threshold:
-                candidate_tally = surplus_tabulation_round(candidate_tally, winning_candidates)
-            elif len(candidate_tally) + len(winning_candidates) > n_required_candidates and max(candidate_tally.values()[0]) < threshold:
-                candidate_tally = candidate_elimination_round(candidate_tally, winning_candidates)
-            else:
-                return winning_candidates
+# def run_tabulation_rounds(district_votes, rep_candidates, dem_candidates, n_required_candidates):
+#     winning_candidates = []
+#     candidate_tally: dict[str, tuple[int, int]] = dict.fromkeys(rep_candidates + dem_candidates, (0, 1))
+#     threshold = float(len(district_votes))/(n_required_candidates+1)
+#     for vote_idx in range(len(district_votes)):
+#         for ranked_choice_idx in range(len(rep_candidates + dem_candidates)):
+#             candidate_tally[district_votes[vote_idx][ranked_choice_idx]][0] += 1
+#             if len(candidate_tally) + len(winning_candidates) > n_required_candidates and max(candidate_tally.values()[0]) > threshold:
+#                 candidate_tally = surplus_tabulation_round(candidate_tally, winning_candidates)
+#             elif len(candidate_tally) + len(winning_candidates) > n_required_candidates and max(candidate_tally.values()[0]) < threshold:
+#                 candidate_tally = candidate_elimination_round(candidate_tally, winning_candidates)
+#             else:
+#                 return winning_candidates
 
 
 def surplus_tabulation_round(candidate_tally, winning_candidates, threshold):
@@ -218,7 +320,7 @@ def surplus_tabulation_round(candidate_tally, winning_candidates, threshold):
             vote_weight *= surplus_fraction
     
 
-def candidate_elimination_round(candidate_tally):
+# def candidate_elimination_round(candidate_tally):
 
 # Each voting function takes in a precinct and a list of candidates and returns
 # a list of ranked choice votes for each voter in the precinct.
@@ -254,7 +356,8 @@ def main() -> None:
     prec_geometries: GeoSeries = GeoSeries.from_file(SHAPE_FILE)
     smd_partition: Partition = Partition(prec_graph, assignment=SMD_ASSIGNMENT_COL)
 
-    mmd_assignment, mmd_n_district_reps = gen_mmd_seed_assignment(smd_partition)
+    mmd_config = gen_mmd_configs(len(smd_partition.parts))[2]
+    mmd_assignment = gen_mmd_seed_assignment(smd_partition, mmd_config)
 
     mmd_partition: Partition = Partition(
         graph=prec_graph, 
@@ -262,37 +365,17 @@ def main() -> None:
         updaters={"cut_edges": cut_edges, "population": Tally(POP_COL, "population")},
     )
 
-    print(mmd_partition.graph.nodes[0])
-    district_election(mmd_partition, 1, 3)
     chain = MarkovChain(
-        partial(mmd_recom, district_reps=mmd_n_district_reps, epsilon=0.01),
+        partial(mmd_recom, district_reps=mmd_config, epsilon=0.01),
         [],
         always_accept,
         mmd_partition,
         total_steps=100
     )
 
-    # ensemble: list[partition] = gen_ensemble(chain, 20)
-    # for partition in ensemble:
-    #     plot_partition(partition, prec_geometries, prs, mmd_n_district_reps, show=false)
-    # prs.save("%s" % pres_file)
-    # print("done, saved as %s" % PRES_FILE)
-
-    # try:
-    #     prev_time = time.process_time_ns()
-    #     for stepno, partition in enumerate(chain):
-    #         curr_time = time.process_time_ns()
-    #         print("chain step total time: %d ms" % (float(curr_time-prev_time)/1000000))
-    #         prev_time = curr_time
-    #         print("step: %d" % stepno)
-    #         print("partition components: %d" % count_components(partition.graph))
-    #         # if stepno % PLOT_INTERVAL == 0:
-    #         #     plot_partition(partition, prec_geometries, prs, stepno, show=False)
-    # except KeyboardInterrupt:
-    #     print("keyboard interrupt")
-    # finally:
-    #     prs.save("%s" % PRES_FILE)
-    #     print("done, saved as %s" % PRES_FILE)
+    random_map: Partition = gen_random_map(chain)
+    plot_partition(random_map, prec_geometries, prs, mmd_config)
+    prs.save("%s" % PRES_FILE)
 
 
 if __name__ == "__main__":
