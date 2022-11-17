@@ -1,7 +1,12 @@
 # TODO: Use proper logger for CodeTimer and other diagnostic output
-# TODO: update documentation for gen_mmd_seed_assignment() as we are now passing in an mmd config
+# TODO: update documentation for gen_mmd_seed_assignment() (and many other funcs) as we are now passing in an mmd config
 # TODO: encapsulate Partition and mmd_config into the same data structure
-# TODO: fix complement_or_not logic; it is very confusing
+# TODO: simplify recom to maybe one function and simplify complement_or_not logic; it is very confusing
+# TODO: fix find_cut() because the tuple return format is very confusing
+# TODO: plot vote-seat share curve (search up Shen Github) proportionality
+# TODO: move plotting funcs, recom funcs, and voting funcs into separate modules, rename this file to main.py
+# TODO: look into caching the gen_ensemble() function (perhaps with @cache decorator)
+# TODO: use linter to enforce type annotations, maybe look into python static type checkers (mypy)
 
 
 import random
@@ -18,9 +23,10 @@ from gerrychain.accept import always_accept
 from gerrychain.updaters import Tally, cut_edges
 from matplotlib.colors import ListedColormap
 from pptx import Presentation
-from typing import Callable
 import itertools
 flatten = itertools.chain.from_iterable
+from ranked_choice_election import ranked_choice_tabulation, gen_candidates, Vote, Candidate
+from voting_models import party_line_voting
 
 
 SHAPE_FILE = "./state_data/PA/PA.shp"
@@ -33,11 +39,6 @@ COLORS = ListedColormap(['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
 '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff',
 '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075',
 '#808080'])
-
-# class MMD():
-#     def __init__(self, partition, district_reps):
-#         self.partition = partition
-#         self.district_reps = district_reps
 
 
 def add_plot_to_pres(prs):
@@ -98,8 +99,8 @@ def split_graph_by_pop(graph: nx.Graph, pop_target: int, graph_pop: int, epsilon
 
 
 def rand_spanning_tree(graph: nx.Graph, edges):
-    spanning_forest = nx.Graph()
-    spanning_forest.add_nodes_from(graph.nodes)
+    spanning_forest = nx.Graph() # can we remove next line by putting graph.nodes into this constructor?
+    spanning_forest.add_nodes_from(graph.nodes) 
     random.shuffle(edges)
     ds = DisjointSet()
     for node in spanning_forest.nodes:
@@ -111,7 +112,7 @@ def rand_spanning_tree(graph: nx.Graph, edges):
     return spanning_forest
 
  
-def mmd_recom(partition: Partition, district_reps: dict[int, int], epsilon: float) -> Partition:
+def mmd_recom(partition: Partition, mmd_config: dict[int, int], epsilon: float) -> Partition:
     """
     Computes next partition after one step of MMD ReCom. This is a proposal
     function that can be provided to the gerrychain MarkovChain constructor.
@@ -144,8 +145,8 @@ def mmd_recom(partition: Partition, district_reps: dict[int, int], epsilon: floa
     merged_subgraph = partition.graph.subgraph(partition.parts[partIDs[0]] | partition.parts[partIDs[1]])
     print("subgraph components = %d" % count_components(merged_subgraph))
     subgraph_pop = partition["population"][partIDs[0]] + partition["population"][partIDs[1]] 
-    subgraph_reps = district_reps[partIDs[0]] + district_reps[partIDs[1]]
-    pop_target = (float(district_reps[partIDs[0]])/subgraph_reps)*subgraph_pop
+    subgraph_reps = mmd_config[partIDs[0]] + mmd_config[partIDs[1]]
+    pop_target = (float(mmd_config[partIDs[0]])/subgraph_reps)*subgraph_pop
     components, complement_or_not = split_graph_by_pop(merged_subgraph.graph, pop_target, subgraph_pop, epsilon)
     if complement_or_not: # component 0 matches the target pop
         flips = dict.fromkeys(components[0], partIDs[0]) | dict.fromkeys(components[1], partIDs[1]) 
@@ -286,77 +287,23 @@ def gen_ensemble(chain: MarkovChain, num_maps) -> list[Partition]:
     return [gen_random_map(chain) for _ in range(num_maps)]
 
 
-# def district_election(partition: Partition, districtID: int, nreps: int):
-#     all_district_votes = [], rep_candidates = [], dem_candidates = []
-#     for i in range(nreps): # assuming each party has the same number of candidates as seats
-#         rep_candidates.append("R" + str(i+1)) # need a better way of representing democrat
-#         dem_candidates.append("D" + str(i+1)) # and republican besides using string
-#     for precinctID in partition.parts[districtID]:
-#         all_district_votes += party_line_voting(partition.graph.nodes[precinctID], rep_candidates, dem_candidates)
-#     run_tabulation_rounds(all_district_votes, rep_candidates, dem_candidates, nreps)
-
-
-# following tabulation strategy as described starting here in HR 3863: https://www.congress.gov/bill/117th-congress/house-bill/3863/text#HC983752E3E3749CDB3BE3B234B4E832C
-# def run_tabulation_rounds(district_votes, rep_candidates, dem_candidates, n_required_candidates):
-#     winning_candidates = []
-#     candidate_tally: dict[str, tuple[int, int]] = dict.fromkeys(rep_candidates + dem_candidates, (0, 1))
-#     threshold = float(len(district_votes))/(n_required_candidates+1)
-#     for vote_idx in range(len(district_votes)):
-#         for ranked_choice_idx in range(len(rep_candidates + dem_candidates)):
-#             candidate_tally[district_votes[vote_idx][ranked_choice_idx]][0] += 1
-#             if len(candidate_tally) + len(winning_candidates) > n_required_candidates and max(candidate_tally.values()[0]) > threshold:
-#                 candidate_tally = surplus_tabulation_round(candidate_tally, winning_candidates)
-#             elif len(candidate_tally) + len(winning_candidates) > n_required_candidates and max(candidate_tally.values()[0]) < threshold:
-#                 candidate_tally = candidate_elimination_round(candidate_tally, winning_candidates)
-#             else:
-#                 return winning_candidates
-
-
-def surplus_tabulation_round(candidate_tally, winning_candidates, threshold):
-    for candidate, num_votes, vote_weight in candidate_tally:
-        if num_votes > threshold:
-            winning_candidates += candidate
-            surplus_fraction = float(num_votes - threshold)/num_votes
-            vote_weight *= surplus_fraction
-    
-
-# def candidate_elimination_round(candidate_tally):
-
-# Each voting function takes in a precinct and a list of candidates and returns
-# a list of ranked choice votes for each voter in the precinct.
-# This voting function assumes that all people in this precinct who voted
-# democrat in the last election will rank all democrats before republicans
-# with random intra-party preference.
-def party_line_voting(precinct: dict[str, int | str], rep_candidates: list, dem_candidates: list) -> list:
-    precinct_votes = []
-    for _ in range(int(precinct["PRES12D"])):
-        random.shuffle(dem_candidates)
-        random.shuffle(rep_candidates)
-        precinct_votes += [dem_candidates + rep_candidates]
-    for _ in range(int(precinct["PRES12R"])):
-        random.shuffle(dem_candidates)
-        random.shuffle(rep_candidates)
-        precinct_votes += [rep_candidates + dem_candidates]
-    return precinct_votes
-
-
-# def ranked_choice_election(partition: Partition, voting_function: Callable[[]] = party_line_voting)
-
-# def memoize_markov_chain(markov_chain: MarkovChain):
-
-
-
+def run_mmd_election(partition: Partition, districtID: int, mmd_config: dict[int, list[int]]) -> list[Candidate]:
+    district_votes: list[Vote] = []
+    district_candidates: list[Candidate] = gen_candidates(mmd_config[districtID])
+    for prec in partition.subgraph[districtID].nodes:
+        district_votes.append(party_line_voting(prec, district_candidates))
+    return ranked_choice_tabulation(district_votes, district_candidates, mmd_config[districtID])
 
 
 
 def main() -> None:
-    prs = Presentation()
+    prs = Presentation() # perhaps make this a static variable inside plotting functions
 
     prec_graph: gerrychain.Graph = Graph.from_json(GRAPH_FILE)
     prec_geometries: GeoSeries = GeoSeries.from_file(SHAPE_FILE)
     smd_partition: Partition = Partition(prec_graph, assignment=SMD_ASSIGNMENT_COL)
 
-    mmd_config = gen_mmd_configs(len(smd_partition.parts))[2]
+    mmd_config = random.choice(gen_mmd_configs(len(smd_partition.parts)))
     mmd_assignment = gen_mmd_seed_assignment(smd_partition, mmd_config)
 
     mmd_partition: Partition = Partition(
@@ -366,7 +313,7 @@ def main() -> None:
     )
 
     chain = MarkovChain(
-        partial(mmd_recom, district_reps=mmd_config, epsilon=0.01),
+        partial(mmd_recom, mmd_config, epsilon=0.01),
         [],
         always_accept,
         mmd_partition,
@@ -374,8 +321,8 @@ def main() -> None:
     )
 
     random_map: Partition = gen_random_map(chain)
-    plot_partition(random_map, prec_geometries, prs, mmd_config)
-    prs.save("%s" % PRES_FILE)
+    district_winners = run_mmd_election(random_map, 1, mmd_config)
+    print(district_winners)
 
 
 if __name__ == "__main__":
