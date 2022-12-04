@@ -1,18 +1,22 @@
 import random
-from ranked_choice_election import Party, Vote, Candidate
-from typing import Callable, Dict
+from election import Party, Ballot, Candidate
+from typing import Callable
+from linetimer import CodeTimer
 
-VotingModel = Callable[[dict], list[Vote]]
+
+VotingModel: type = Callable[[dict], list[Ballot]]
 
 
-def party_line_voting(precinct: dict[str, int|str], candidates: list[Candidate]) -> list[Vote]:
-    precinct_votes: list[Vote] = []
+def party_line_voting(precinct: dict[str, int | str], candidates: list[Candidate]) -> list[Ballot]:
+    precinct_votes: list[Ballot] = []
     dem_candidates = [c for c in candidates if c.party == Party.DEMOCRAT]
     rep_candidates = [c for c in candidates if c.party == Party.REPUBLICAN]
     for _ in range(int(precinct["PRES12D"])):
         random.shuffle(dem_candidates)
-        precinct_votes += Vote(dem_candidates)
-    for _ in range(int(precinct["PRES12R"])):
         random.shuffle(rep_candidates)
-        precinct_votes += Vote(rep_candidates)
+        precinct_votes.append(Ballot(dem_candidates + rep_candidates))
+    for _ in range(int(precinct["PRES12R"])):
+        random.shuffle(dem_candidates)
+        random.shuffle(rep_candidates)
+        precinct_votes.append(Ballot(rep_candidates + dem_candidates))
     return precinct_votes

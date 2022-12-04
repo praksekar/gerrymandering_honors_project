@@ -4,34 +4,34 @@
 # TODO: simplify recom to maybe one function and simplify complement_or_not logic; it is very confusing
 # TODO: fix find_cut() because the tuple return format is very confusing
 # TODO: plot vote-seat share curve (search up Shen Github) proportionality
-# TODO: move plotting funcs, recom funcs, and voting funcs into separate modules, rename this file to main.py
+# TODO: rename this file to main.py
 # TODO: look into caching the gen_ensemble() function (perhaps with @cache decorator)
-# TODO: use linter to enforce type annotations, maybe look into python static type checkers (mypy)
+# TODO: use linter 
+# TODO: use a testing framework to test parts of program (such as running an election)
 
 
 import random
 from disjoint_set import DisjointSet
 from linetimer import CodeTimer
-import time
 from functools import partial
-import gerrychain
 import matplotlib.pyplot as plt
 import networkx as nx
 from geopandas import GeoSeries
-from gerrychain import Graph, MarkovChain, Partition, constraints
+from gerrychain import Graph, MarkovChain, Partition
 from gerrychain.accept import always_accept
 from gerrychain.updaters import Tally, cut_edges
 from matplotlib.colors import ListedColormap
 from pptx import Presentation
 import itertools
 flatten = itertools.chain.from_iterable
-from ranked_choice_election import ranked_choice_tabulation, gen_candidates, Vote, Candidate
+from election import Party, Candidate, Ballot, gen_candidates, multi_seat_ranked_choice_election
 from voting_models import party_line_voting
+from matplotlib.pyplot import hist
 
 
 SHAPE_FILE = "./state_data/PA/PA.shp"
 GRAPH_FILE = "./PAjson_wo_geometry"
-PRES_FILE = "./pres_output/mmd_recom2"
+PRES_FILE = "./pres_output/mmd_recom3"
 SMD_ASSIGNMENT_COL = "CD_2011"
 PLOT_INTERVAL = 1 
 POP_COL = "TOTPOP"
@@ -53,7 +53,7 @@ def plot_partition(partition: Partition, precinct_geometries: GeoSeries, prs, di
     partition.plot(precinct_geometries, cmap=cmap)
     centroids: dict[int, tuple] = get_district_centroids(partition, precinct_geometries)
     for districtID, coord in centroids.items():
-        pop_frac = float(partition["population"][districtID]/sum(partition["population"].values())) * 18
+        pop_frac = float(partition["population"][districtID]/sum(partition["population"].values())) * sum(district_reps.values())
         plt.text(coord[0], coord[1], "District %d\nPopulation: %d\nPop Frac: %3f/18\n, num reps: %d" % (districtID, partition["population"][districtID], pop_frac, district_reps[districtID]))
     if prs is not None:
         add_plot_to_pres(prs)
@@ -84,13 +84,13 @@ def split_graph_by_pop(graph: nx.Graph, pop_target: int, graph_pop: int, epsilon
     pop_rng = (pop_target * (1 - epsilon), pop_target * (1 + epsilon))
     graph_edges = list(graph.edges)
     for i in range(node_repeats):
-        with CodeTimer("create spanning tree"):
-            spanning_tree = rand_spanning_tree(graph, graph_edges)
+        # with CodeTimer("create spanning tree"):
+        spanning_tree = rand_spanning_tree(graph, graph_edges)
         root = random.choice(list(spanning_tree.nodes))
         complement_or_not, cut_edge = find_cut(graph, spanning_tree, root, None, graph_pop, pop_rng)
-        print("complement or not = " + str(complement_or_not))
+        # print("complement or not = " + str(complement_or_not))
         if cut_edge:
-            print("finished recom after %d random spanning trees on %d nodes" % (i+1, len(spanning_tree.nodes)))
+            # print("finished recom after %d random spanning trees on %d nodes" % (i+1, len(spanning_tree.nodes)))
             spanning_tree.remove_edge(cut_edge[0], cut_edge[1])
             comp_1 = [node for node in nx.dfs_postorder_nodes(spanning_tree, source=cut_edge[0])]
             comp_2 = [node for node in nx.dfs_postorder_nodes(spanning_tree, source=cut_edge[1])]
@@ -128,7 +128,7 @@ def mmd_recom(partition: Partition, mmd_config: dict[int, int], epsilon: float) 
 
     To improve intuitiveness of the algorithm, districts will retain the same
     number of representatives throughout all steps of ReCom as specified by
-    district_reps.
+    mmd_config.
 
     Arguments:
         partition: an MMD partition
@@ -143,7 +143,6 @@ def mmd_recom(partition: Partition, mmd_config: dict[int, int], epsilon: float) 
     partIDs = (partition.assignment[edge[0]], partition.assignment[edge[1]])
     print("doing recom on districts %d, %d" % (partIDs[0], partIDs[1]))
     merged_subgraph = partition.graph.subgraph(partition.parts[partIDs[0]] | partition.parts[partIDs[1]])
-    print("subgraph components = %d" % count_components(merged_subgraph))
     subgraph_pop = partition["population"][partIDs[0]] + partition["population"][partIDs[1]] 
     subgraph_reps = mmd_config[partIDs[0]] + mmd_config[partIDs[1]]
     pop_target = (float(mmd_config[partIDs[0]])/subgraph_reps)*subgraph_pop
@@ -288,22 +287,62 @@ def gen_ensemble(chain: MarkovChain, num_maps) -> list[Partition]:
 
 
 def run_mmd_election(partition: Partition, districtID: int, mmd_config: dict[int, list[int]]) -> list[Candidate]:
-    district_votes: list[Vote] = []
-    district_candidates: list[Candidate] = gen_candidates(mmd_config[districtID])
-    for prec in partition.subgraph[districtID].nodes:
-        district_votes.append(party_line_voting(prec, district_candidates))
-    return ranked_choice_tabulation(district_votes, district_candidates, mmd_config[districtID])
+    district_votes: list[Ballot] = []
+    with CodeTimer("running gen_candidates"):
+        district_candidates: list[Candidate] = gen_candidates(mmd_config[districtID])
+    for precID in partition.subgraphs[districtID].nodes:
+        with CodeTimer("running party_line_voting"):
+            precinct_votes = party_line_voting(partition.graph.nodes[precID], district_candidates)
+        district_votes += precinct_votes
+    with CodeTimer("running tabulation"):
+        return multi_seat_ranked_choice_election(district_votes, district_candidates, mmd_config[districtID])
 
+
+def run_statewide_election(partition: Partition, mmd_config: dict[int, list[int]]) -> list[Candidate]:
+    winners = []
+    for districtID in partition.parts.keys():
+        with CodeTimer("running mmd election"):
+            winners += run_mmd_election(partition, districtID, mmd_config)
+    return winners
+
+
+def run_many_statewide_elections(chain: MarkovChain, mmd_config: dict[int, int], n_elections: int) -> list[list[Candidate]]:
+    elections_results: list[list[Candidate]] = []
+    with CodeTimer("generating ensemble of size %d" % n_elections):
+        ensemble: list[Partition] = gen_ensemble(chain, n_elections)
+    for map in ensemble:
+        with CodeTimer("running district elections"):
+            election_results = run_statewide_election(map, mmd_config) 
+        elections_results.append(election_results)
+    return elections_results
+
+
+def plot_party_split(elections_results: list[list[Candidate]]): 
+    dem_counts: list[int] = []
+    for election_result in elections_results:
+        dem_count = 0
+        for candidate in election_result:
+            if candidate.party == Party.DEMOCRAT:
+                dem_count += 1
+        dem_counts.append(dem_count)
+    print("DEM COUNTS: " + str(dem_counts))
+    hist(dem_counts)
+    plt.savefig('dem_split2.png')
+
+
+def run_smd_election(partition: Partition):
+    pass
 
 
 def main() -> None:
     prs = Presentation() # perhaps make this a static variable inside plotting functions
 
-    prec_graph: gerrychain.Graph = Graph.from_json(GRAPH_FILE)
+    prec_graph: Graph = Graph.from_json(GRAPH_FILE)
     prec_geometries: GeoSeries = GeoSeries.from_file(SHAPE_FILE)
-    smd_partition: Partition = Partition(prec_graph, assignment=SMD_ASSIGNMENT_COL)
 
-    mmd_config = random.choice(gen_mmd_configs(len(smd_partition.parts)))
+    smd_partition: Partition = Partition(prec_graph, assignment=SMD_ASSIGNMENT_COL)
+    # mmd_config = random.choice(gen_mmd_configs(len(smd_partition.parts)))
+    mmd_config = gen_mmd_configs(len(smd_partition.parts))[0]
     mmd_assignment = gen_mmd_seed_assignment(smd_partition, mmd_config)
 
     mmd_partition: Partition = Partition(
@@ -313,16 +352,21 @@ def main() -> None:
     )
 
     chain = MarkovChain(
-        partial(mmd_recom, mmd_config, epsilon=0.01),
+        partial(mmd_recom, mmd_config=mmd_config, epsilon=0.01),
         [],
         always_accept,
         mmd_partition,
-        total_steps=100
+        total_steps=3
     )
 
-    random_map: Partition = gen_random_map(chain)
-    district_winners = run_mmd_election(random_map, 1, mmd_config)
-    print(district_winners)
+    mmd_election_results: list[Candidate] = run_mmd_election(mmd_partition, 1, mmd_config)
+    print(mmd_election_results)
+    # ensemble: list[Partition] = gen_ensemble(chain, 10)
+    # for map in ensemble:
+    #     plot_partition(map, prec_geometries, prs, mmd_config, show=False, cmap=COLORS)
+    # prs.save(PRES_FILE)
+    # elections_results = run_many_statewide_elections(chain, mmd_config, 20)    
+    # plot_party_split(elections_results)
 
 
 if __name__ == "__main__":
