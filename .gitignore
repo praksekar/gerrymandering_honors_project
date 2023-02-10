@@ -1,1 +1,3 @@
 env
+pres_output/*
+state_data/*
