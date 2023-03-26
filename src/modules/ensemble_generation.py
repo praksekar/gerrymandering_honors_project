@@ -7,7 +7,6 @@ import networkx as nx
 import logging
 from linetimer import CodeTimer
 import consts
-import run_config
 logger = logging.getLogger(__name__)
 
 

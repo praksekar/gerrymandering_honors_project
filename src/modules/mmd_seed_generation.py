@@ -5,7 +5,6 @@ from gerrychain.updaters import Tally, cut_edges
 from .graph_utils import rand_spanning_tree
 import itertools
 from linetimer import CodeTimer
-from networkx import Graph
 flatten = itertools.chain.from_iterable
 import consts
 import logging
@@ -35,6 +34,24 @@ def gen_mmd_configs(n_reps: int) -> list[dict[int, int]]:
     return configs
 
 
+def get_optimal_config(configs: list[dict[int, int]]) -> dict[int, int]:
+    """
+    From a list of possible MMD configs for a state, return the one that
+    maximizes the number of districts of size 5 and minimizes the number of
+    districts with size 4 per H.R. 3863, SEC. 313, part (a)(1) E and F:
+    https://www.congress.gov/bill/117th-congress/house-bill/3863/text#HDB174873BAB147A1A1D24D5E921A520D
+    """
+    pass
+
+
+def get_max_districts_config(configs: list[dict[int, int]]) -> dict[int, int]:
+    pass
+
+
+def get_min_districts_config(configs: list[dict[int, int]]) -> dict[int, int]:
+    pass
+
+
 def gen_smd_adjacency_graph(smd_partition: Partition) -> nx.Graph:
     """
     Constructs an SMD adjacency graph based on the input SMD partition.
@@ -46,7 +63,7 @@ def gen_smd_adjacency_graph(smd_partition: Partition) -> nx.Graph:
     """
 
     edgelist = []
-    for edge in smd_partition["cut_edges"]:
+    for edge in smd_partition[consts.CUT_EDGE_UPDATER]:
         edgelist.append((smd_partition.assignment[edge[0]], smd_partition.assignment[edge[1]]))
     return nx.Graph(edgelist)
 
@@ -90,7 +107,7 @@ def cut_smd_adjacency_graph(graph: nx.Graph, mmd_config: dict[int, int], cut_ite
 def gen_mmd_seed_assignment(smd_partition: Partition, mmd_config: dict[int, int]) -> dict[int, int]:
     """
     Generates initial MMD assignment dict that maps precinct IDs to district
-    IDs. This will be used as the assignment parameter to the gerrychain
+    IDs. This will be used as the assignment parameter to the Gerrychain
     Partition constructor.
 
     Algorithm first generates an SMD adjacency graph, cuts it into the desired
@@ -104,7 +121,7 @@ def gen_mmd_seed_assignment(smd_partition: Partition, mmd_config: dict[int, int]
     """
 
     smd_graph: nx.Graph = gen_smd_adjacency_graph(smd_partition)
-    with CodeTimer("cutting smd graph into proportions specified by config"):
+    with CodeTimer("cutting smd graph into proportions specified by config", logger_func=logger.info):
         smd_forest = cut_smd_adjacency_graph(smd_graph, mmd_config)
     components = [c for c in nx.connected_components(smd_forest)]
     prec_assignment = {}
@@ -119,7 +136,7 @@ def gen_mmd_seed_assignment(smd_partition: Partition, mmd_config: dict[int, int]
 
 
 def gen_mmd_seed_partition(smd_partition: Partition, mmd_config: dict[int, int]) -> Partition:
-    logger.info("Using MMD config: %s" % str(mmd_config))
+    logger.info("using MMD config: %s" % str(mmd_config))
     mmd_assignment: dict[int, int] = gen_mmd_seed_assignment(smd_partition, mmd_config)
     return Partition(
         graph=smd_partition.graph, 

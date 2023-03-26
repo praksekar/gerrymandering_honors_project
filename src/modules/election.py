@@ -1,73 +1,11 @@
-from __future__ import annotations
-from typing import TYPE_CHECKING
-from enum import Enum
-from gerrychain import Partition, MarkovChain
-from linetimer import CodeTimer
-from .ensemble_generation import gen_ensemble
+from gerrychain import Partition
+from linetimer import CodeTimer, linetimer
+from ..custom_types import VotingModel
 import run_config
 import logging
+from pprint import pprint
 logger = logging.getLogger(__name__)
-
-
-class Party(Enum):
-    """Enum to represent each political party participating in an election."""
-
-    DEMOCRAT = 1
-    REPUBLICAN = 2
-
-
-class Candidate:
-    """Class representing an election candidate."""
-
-    party: Party
-    name: str
-    favoritism: int
-
-    def __init__(self, party: Party, name: str, favoritism: int) -> None:
-        self.party = party
-        self.name = name
-        self.favoritism = favoritism
-    
-    def __repr__(self) -> str:
-        return "party = %s and name = %s" % (self.party.name, self.name)
-
-
-class RankedChoiceBallot:
-    """
-    Class that represents the physical ballot a voter casts during a ranked
-    choice election. Each ballot is comprised of a ranked list of candidates.
-
-    Fields:
-        choices_left: remaining list of ranked candidates on ballot that have
-        not yet been counted in a round of tabulation; the first element will be
-        the candidate that this ballot will next count for
-        was_transferred: flag to prevent double transfer of the same ballot
-        during a surplus tabulation round in which there are multiple winners
-        weight: used for summing the vote count for a candidate when this
-        ballot is tabulated; is reweighted every surplus tabulation round
-    
-    Methods:
-        curr_choice: returns candidate that this ballot will next count for (0th
-        element of choices_left)
-        next_continuing_choice: pops candidates from front of choices_left until
-        a continuing candidate is at the front; used after each round to
-        'transfer' a vote to the next candidate on that ballot
-    """
-
-    choices_left: list[Candidate]
-    was_transferred: bool = False
-    weight: float = 1
-
-    def __init__(self, ranked_choices: list[Candidate]) -> None:
-        self.choices_left = ranked_choices
-
-    def curr_choice(self) -> Candidate:
-        return self.choices_left[0]
-
-    def next_continuing_choice(self, continuing_candidates: set[Candidate]) -> None:
-        while self.choices_left[0] not in continuing_candidates:
-            self.choices_left.pop(0)
-        self.choices_left.pop(0)
+from ..custom_types import RankedChoiceBallot, Candidate, Party 
 
 
 def multi_seat_ranked_choice_election(ballots: list[RankedChoiceBallot], candidates: set[Candidate], n_winners: int) -> set[Candidate]:
@@ -125,7 +63,7 @@ def multi_seat_ranked_choice_election(ballots: list[RankedChoiceBallot], candida
     return winners | continuing_candidates 
 
 
-def gen_mmd_candidates(n_seats) -> set[Candidate]: 
+def gen_mmd_candidates(n_seats: int, districtID: int) -> set[Candidate]: 
     """
     Generates a list of arbitrary candidates from each party. The number of
     candidates from each party is equal to the number of seats in the election
@@ -141,38 +79,30 @@ def gen_mmd_candidates(n_seats) -> set[Candidate]:
     candidate_counter: int = 1
     for party in Party:
         for _ in range(n_seats):
-            candidates.add(Candidate(party, "Candidate %d" % candidate_counter, 1))
+            candidates.add(Candidate(party, "Candidate %d" % candidate_counter, districtID, 1))
             candidate_counter += 1
     return candidates
 
 
-def gen_precinct_ballots(partition: Partition, precID: int, voting_model: VotingModel, candidates: list[Candidate]) -> list[RankedChoiceBallot]:
-    prec_ballots: list[RankedChoiceBallot] = []
-    for _ in range(partition.graph.nodes[precID][run_config.DEM_VOTE_TALLY_COL]): 
-        prec_ballots.append(voting_model(Party.DEMOCRAT, candidates))
-    for _ in range(partition.graph.nodes[precID][run_config.REP_VOTE_TALLY_COL]): 
-        prec_ballots.append(voting_model(Party.REPUBLICAN, candidates))
-    return prec_ballots
-
-
+@linetimer(logger_func=logger.info)
 def gen_mmd_ballots(partition: Partition, districtID: int, voting_model: VotingModel, candidates: list[Candidate]) -> list[RankedChoiceBallot]:
     mmd_ballots: list[RankedChoiceBallot] = []
     for precID in partition.subgraphs[districtID].nodes:
-        mmd_ballots += gen_precinct_ballots(partition, precID, voting_model, candidates)
+        mmd_ballots += voting_model(partition.graph.nodes[precID], candidates)
     return mmd_ballots
 
 
 def run_district_election(partition: Partition, districtID: int, n_reps: int, voting_model: VotingModel) -> set[Candidate]:
-    candidates: list[Candidate] = gen_mmd_candidates(n_reps)
+    candidates: list[Candidate] = gen_mmd_candidates(n_reps, districtID)
     district_ballots: list[RankedChoiceBallot] = gen_mmd_ballots(partition, districtID, voting_model, candidates)
     return multi_seat_ranked_choice_election(district_ballots, candidates, n_reps)
 
 
-def run_statewide_district_elections(partition: Partition, mmd_config: dict[int, int], voting_model: VotingModel) -> set[Candidate]:
-    winners = []
+def run_statewide_district_elections(partition: Partition, mmd_config: dict[int, int], voting_model: VotingModel) -> dict[int, set[Candidate]]:
+    winners = dict.fromkeys(mmd_config.keys(), [])
     for districtID in partition.parts.keys():
-        with CodeTimer("running mmd election", logger_func=logger.info):
-            winners += run_district_election(partition, districtID, mmd_config[districtID], voting_model)
+        with CodeTimer("running mmd election for district %d" % districtID, logger_func=logger.info):
+            winners[districtID] = run_district_election(partition, districtID, mmd_config[districtID], voting_model)
     return winners
 
 

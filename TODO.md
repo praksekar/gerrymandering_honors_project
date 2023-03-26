@@ -1,16 +1,32 @@
-# TODO: Use proper logger for CodeTimer and other diagnostic output
-# TODO: set log level from command line argument parsed by argparse
-# TODO: update documentation for gen_mmd_seed_assignment() (and many other funcs) as we are now passing in an mmd config
-# TODO: encapsulate Partition and mmd_config into the same data structure called MMD_Partition
-# TODO: simplify recom to maybe one function and simplify complement_or_not logic; it is very confusing
-# TODO: fix find_cut() because the tuple return format is very confusing
-# TODO: plot vote-seat share curve (search up Shen Github) proportionality
-# TODO: look into caching the gen_ensemble() function (perhaps with @cache decorator)
-# TODO: use linter 
-# TODO: use a testing framework to test parts of program (such as running an election)
-# TODO: fix gen_mmd_seed_assignment to be faster by using modified kruskals to glue together adjacent smd districts
-# TODO: for modeling, come up with machine learning function f(v) -> c that maps voter profile vector v = ([age, %race, rural/suburban ...]) to desired candidate vector c = ([age, democrat/rep, policy1, policy2]). These vectors should have the same overlapping properties. Compute the vector differences between each prediction c and candidate to get a ranking of candidates for that voter.
-# TODO: prepend each module function not intended to be used externally with underscore by convention
-# TODO: abstract partition data structures, candidate generation, voting model, and election functions to work regardless of partition type (smd or mmd)
-# TODO: consider using docker + makefile commands for easy project building and running
-# TODO: consider build sequence: create dockerfile to build dependencies and run autopep8 and mypy before successfully building and running
+# To do
+## Organizational/Quality of Life
+### In Progress
+    [ ] - use autopep8 linter and configure settings in pyproject.toml
+    [ ] - use a testing framework to test parts of program (such as running an election)
+    [ ] - set log level from command line argument parsed by argparse
+    [ ] - prepend each module function not intended to be used externally with underscore by convention
+    [ ] - abstract partition data structures, candidate generation, voting model, and election functions to work regardless of partition type (smd or mmd)
+    [ ] - consider using docker + makefile commands for easy project building and running. autopep8 and mypy, for instance, can be invoked during the build sequence
+    [ ] - update documentation for functions 
+    [ ] - simplify recom to maybe one function and simplify complement_or_not logic; it is very confusing
+    [ ] - fix find_cut() because the tuple return format is very confusing
+    [ ] - look into caching the gen_ensemble() function (perhaps with @cache decorator)
+    [ ] - use pprint in base logger so that all prints are ran through a pprint first
+    [ ] - use more custom types in custom_types in py and put them into function annotations
+### Finished
+[x] - Use proper logger for CodeTimer and other diagnostic output
+
+## Core Functionality
+### In Progress
+    [ ] - Use VMDPartition class which extends Partition and adds district_reps field, and change all functions to use it. Then we can simply pass in a VMDPartition with district_reps of all 1 to have the code work for SMD partitions.
+    [ ] - Create function to choose mmd config that maximizes the number of 5 districts and minimizes the number of 4 districts desired by H.R. 3863 SEC. 313. E and F: https://www.congress.gov/bill/117th-congress/house-bill/3863/text#H8E776F90310F45FEA20AC3152FBC697E. Also check section D for restrictions on the political uniformity of districts.
+    [ ] - write Slurm script for Seawulf
+    [ ] - finish embarrassingly parallel mpi script for generating ensembles
+    [ ] - fix rand_spanning_tree method in graph_utils to take in a seed for reproducible output
+    [ ] - plot vote-seat share curve (search up Shen Github) proportionality
+    [ ] - mmd ranked choice election currently not working. print logger debug statements for every round of vote tabulation. display each candidate and the number of votes currently for that candidate
+
+## Research Ideas
+### In Progress
+    [ ] - for modeling, come up with machine learning function f(v) -> c that maps voter profile vector v = ([age, %race, rural/suburban ...]) to desired candidate vector c = ([age, democrat/rep, policy1, policy2]). These vectors should have the same overlapping properties. Compute the vector differences between each prediction c and candidate to get a ranking of candidates for that voter.
+    [ ] - consider 3rd parties in elections
