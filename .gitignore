@@ -3,3 +3,4 @@ pres_output/*
 archived/*
 __pycache__/
 *.pyc/
+state_data (copy)/*

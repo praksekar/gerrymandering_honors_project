@@ -17,12 +17,12 @@ def add_plot_to_pres(prs) -> None:
     print("slide added")
 
 
-def plot_partition(partition: Partition, prs: Presentation, district_reps: dict[int, int], cmap, show=False) -> None:
+def plot_partition(partition: Partition, prs: Presentation, cmap, show=False) -> None:
     partition.plot(cmap=cmap)
     centroids: dict[int, tuple] = get_district_centroids(partition, partition.graph.geometry)
     for districtID, coord in centroids.items():
-        pop_frac = float(partition[consts.POP_UPDATER][districtID]/sum(partition[consts.POP_UPDATER].values())) * sum(district_reps.values())
-        plt.text(coord[0], coord[1], "District %d\nPopulation: %d\nPop Frac: %3f/18\nnum reps: %d" % (districtID, partition[consts.POP_UPDATER][districtID], pop_frac, district_reps[districtID]))
+        pop_frac = float(partition[consts.POP_UPDATER][districtID]/sum(partition[consts.POP_UPDATER].values())) * sum(partition.district_reps.values())
+        plt.text(coord[0], coord[1], "District %d\nPopulation: %d\nPop Frac: %3f/18\nnum reps: %d" % (districtID, partition[consts.POP_UPDATER][districtID], pop_frac, partition.district_reps[districtID]))
     if prs is not None:
         add_plot_to_pres(prs)
     if show:
