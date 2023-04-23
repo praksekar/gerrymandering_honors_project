@@ -60,7 +60,7 @@ def gen_seeds() -> None:
 def gen_smd_ensemble(state: str) -> None:
     json_file_path: Path = os.path.join(consts.SMD_ENSEMBLE_DIR, "actual")
     seed: VMDPartition = VMDPartition.from_file(json_file_path, consts.STATE_GRAPH_PATH(state), consts.STATE_GEOMETRY_PATH)
-    ensemble: Ensemble = gen_ensemble(seed, 10, 10, 0.01)
+    ensemble: Ensemble = gen_ensemble(seed, 10, 10, 0.01, "aaa", [])
     ensemble.to_file(os.path.join(consts.SMD_ENSEMBLE_DIR(state), consts. SMD_ENSEMBLE_FILENAME(ensemble)))
 
 

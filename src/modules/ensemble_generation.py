@@ -85,10 +85,10 @@ def find_cut(graph: Graph, tree: Graph, curr_node: int, parent: int, graph_pop: 
     return (sum, None)
 
 
-def gen_random_map(seed_partition: Partition, n_recom_steps: int, epsilon: float) -> Partition:
+def gen_random_map(seed_partition: Partition, n_recom_steps: int, epsilon: float, constraints: list[str]) -> Partition:
     chain = MarkovChain( 
         partial(vmd_recom, epsilon=epsilon),
-        [],
+        constraints,
         always_accept,
         seed_partition,
         total_steps=n_recom_steps
@@ -98,7 +98,7 @@ def gen_random_map(seed_partition: Partition, n_recom_steps: int, epsilon: float
     return partition
 
 
-def gen_ensemble(seed_partition: VMDPartition, ensemble_size: int, n_recom_steps: int, epsilon: float) -> Ensemble:
+def gen_ensemble(seed_partition: VMDPartition, ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str]) -> Ensemble:
     logger.info(f"generating ensemble of size {ensemble_size}")
-    maps: list[VMDPartition] = [gen_random_map(seed_partition, n_recom_steps, epsilon) for _ in range(ensemble_size)]
-    return Ensemble(maps, n_recom_steps, epsilon)
+    maps: list[VMDPartition] = [gen_random_map(seed_partition, n_recom_steps, epsilon, constraints) for _ in range(ensemble_size)]
+    return Ensemble(maps, n_recom_steps, epsilon, seed_type, constraints)

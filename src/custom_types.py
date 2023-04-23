@@ -1,15 +1,12 @@
+from __future__ import annotations
 from enum import Enum
 from gerrychain import Partition, Graph
 from gerrychain.updaters import cut_edges, Tally
 from geopandas import GeoSeries
-from typing import Callable, Dict, List
+from typing import Callable, Dict, Union
 from pathlib import Path
-import io
-from io import BufferedReader
-import os
 import json
 import consts
-import jsonpickle
 import logging
 logger = logging.getLogger(__name__)
 
@@ -23,30 +20,43 @@ class VMDPartition(Partition):
     districts to the number of representatives in that district"""
 
     district_reps: RepsPerDistrict
-    seed_type: str
 
-    def __init__(self, district_reps: RepsPerDistrict, seed_type: str, *args, **kwargs):
+    def __init__(self, district_reps: RepsPerDistrict, *args, **kwargs):
         self.district_reps = district_reps
         super(VMDPartition, self).__init__(*args, **kwargs)
     
-    def flip(self, flips): # needed because original flip method won't copy over district_reps field, clean this up
+    def flip(self, flips): 
+        """ Needed because original flip method won't copy over this subclass' new fields."""
+
         return self.__class__(parent=self, flips=flips, district_reps=self.district_reps) 
     
     @staticmethod
-    def from_file(json_file: Path, graph_file: Path, geom_file: Path=None) -> VMDPartition:
+    def from_file(self, json_file: Path, graph_file: Path, geom_file: Path=None) -> VMDPartition:
+        """Loads partition data from json file and combines it with Graph data and optionally GeoSeries data."""
+
         logger.info(f"loading VMDPartition from {json_file}")
         prec_graph: Graph = Graph.from_json(graph_file) 
-        vmd_info: dict = jsonpickle.decode(open(json_file, "r").read())
+        vmd_info: dict = self.from_json(open(json_file, "r").read())
         if geom_file:
             prec_graph.geometry = GeoSeries.from_file(geom_file) 
-        return VMDPartition(graph=prec_graph, assignment=vmd_info.assignment, district_reps=vmd_info.district_reps, updaters={consts.CUT_EDGE_UPDATER: cut_edges, consts.POP_UPDATER: Tally(consts.POP_COL, consts.POP_UPDATER)})
+        return VMDPartition(graph=prec_graph, # figure out if there's a way of initializing this without kwargs
+                            assignment=vmd_info.assignment, 
+                            district_reps=vmd_info.district_reps, 
+                            updaters={consts.CUT_EDGE_UPDATER: cut_edges, 
+                                      consts.POP_UPDATER: Tally(consts.POP_COL, consts.POP_UPDATER)})
 
-    def to_file(self, file: Path) -> str:
+    def to_file(self, file: Path) -> str: # maybe pass in a "filename formatter" function here like SMD_ENSEMBLE_FILENAME()
         logger.info(f"saving VMDPartition to {file}")
-        json.dump(self.to_json(), open(file, "w+"))
+        open(file, "w+").write(json.dumps(self.to_dict()))
 
-    def to_json(self) -> str:
-        return jsonpickle.encode({ "assignment": self.assignment, "district_reps": self.district_reps })
+    def from_json(self, json_str: str) -> dict:
+        json_obj = json.loads(json_str) 
+        json_obj.assignment = {int(k): v for k, v in json.assignment}
+        json_obj.district_reps = {int(k): v for k, v in json.assignment}
+        return json_obj
+
+    def to_dict(self) -> dict:
+        return {"assignment": self.assignment, "district_reps": self.district_reps}
 
     def __repr__(self): 
         number_of_parts = len(self)
@@ -139,35 +149,46 @@ class Ballot:
 
 class Ensemble():
     """
-    Class representing an ensemble, or collection of random maps. Contains
-    fields to describe parameters used to generate ensemble and helper methods
-    for serializing to files.
+    Wrapper class for an ensemble, or collection of random maps. Contains fields
+    to describe parameters used to generate ensemble and helper methods for
+    serializing to files.
     """
 
     maps: list[Partition]
     n_recom_steps: int
     epsilon: float
     seed_type: str
+    constrants: str
 
-    def __init__(self, maps: list[Partition], n_recom_steps: int, epsilon: float) -> None:
+    def __init__(self, maps: list[Partition], n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str]) -> None:
         self.maps = maps
         self.n_recom_steps = n_recom_steps
         self.epsilon = epsilon
+        self.seed_type = seed_type
+        self.constrants = constraints
 
     @staticmethod
-    def from_file(self, file: Path):
+    def from_file(file: Path):
         logger.info(f"loading Ensemble from {file}")
-        return jsonpickle.decode(open(file, "r"))
+    
+    def from_json(self, file_json: str) -> dict:
+        json_obj = json_obj.loads(file_json) 
+        json_obj.maps = [VMDPartition.from_json(map) for map in json_obj.maps]
+        return json_obj
 
-    def to_json(self) -> str:
-        return jsonpickle.encode(self)
+    def to_dict(self) -> str:
+        return {"maps": [map.to_dict() for map in self.maps], 
+                "n_recom_steps": self.n_recom_steps,
+                "epsilon": self.epsilon, 
+                "seed_type": self.seed_type,
+                "constraints": self.constrants}
     
     def to_file(self, file: Path) -> None:
         logger.info(f"saving Ensemble to {file}")
-        json.dump(self.to_json(), open(file, "w")) 
+        open(file, "w").write(json.dumps(self.to_dict()))
     
 
-Precinct: type = Dict[str, int|str]
+Precinct: type = Dict[str, Union[int, str]]
 CurriedVotingComparator: type = Callable[[Candidate, Candidate], int]
 VotingComparator: type = Callable[[Candidate, Candidate, Voter], int]
 Tabulator: type = Callable[[list[Ballot], list[Candidate], int], list[Candidate]]

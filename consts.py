@@ -24,8 +24,8 @@ STATE_GEOMETRY_PATH = lambda state: os.path.join(STATE_DIR(state), STATE_GEOMETR
 STATE_GRAPH_PATH = lambda state: os.path.join(STATE_DIR(state), STATE_GRAPH_FILENAME)
 SMD_SEEDS_DIR = lambda state: os.path.join(STATE_DIR(state), SMD_SEED_DIRNAME)
 MMD_SEEDS_DIR = lambda state: os.path.join(STATE_DIR(state), MMD_SEED_DIRNAME)
-SMD_ENSEMBLE_FILENAME = lambda ensemble: f"SMD-{ensemble.seed_type}-{ensemble.n_recom_steps}-{ensemble.epsilon}"
-MMD_ENSEMBLE_FILENAME = lambda ensemble: f"MMD-{ensemble.seed_type}-{ensemble.n_recom_steps}-{ensemble.epsilon}"
+SMD_ENSEMBLE_FILENAME = lambda ensemble: f"SMD-{ensemble.seed_type}-{ensemble.constraints}-{ensemble.n_recom_steps}-{ensemble.epsilon}"
+MMD_ENSEMBLE_FILENAME = lambda ensemble: f"MMD-{ensemble.seed_type}-{ensemble.constraints}-{ensemble.n_recom_steps}-{ensemble.epsilon}"
 SMD_ENSEMBLE_DIR = lambda state: os.path.join(STATE_DIR(state), "smd_ensembles")
 MMD_ENSEMBLE_DIR = lambda state: os.path.join(STATE_DIR(state), "mmd_ensembles")
 
