@@ -60,6 +60,6 @@ def gen_smd_seeds() -> None:
     for state_dirname in state_subdirnames:
         prec_graph: Graph = Graph.from_json(os.path.join(consts.STATE_DIR(state_dirname), consts.STATE_GRAPH_FILENAME)) 
         n_districts: int = len(Partition(graph=prec_graph, assignment=consts.DISTRICT_NO_COL).parts) # find a cleaner way of counting the number of districts
-        partition: VMDPartition = VMDPartition(graph=prec_graph, assignment=consts.DISTRICT_NO_COL, district_reps=dict.fromkeys(range(1, n_districts+1), 1), seed_type="actual", updaters={consts.CUT_EDGE_UPDATER: cut_edges, consts.POP_UPDATER: Tally(consts.POP_COL, consts.POP_UPDATER)})
+        partition: VMDPartition = VMDPartition(graph=prec_graph, assignment=consts.DISTRICT_NO_COL, district_reps=dict.fromkeys(range(1, n_districts+1), 1), updaters={consts.CUT_EDGE_UPDATER: cut_edges, consts.POP_UPDATER: Tally(consts.POP_COL, consts.POP_UPDATER)})
         os.makedirs(consts.SMD_SEEDS_DIR(state_dirname), exist_ok=True)
         partition.to_file(os.path.join(consts.SMD_SEEDS_DIR(state_dirname), "actual")) 
