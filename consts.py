@@ -3,8 +3,8 @@ from matplotlib.colors import ListedColormap
 from pathlib import Path
 
 
-PROJ_ROOT: Path = os.path.dirname(__file__)
-STATE_DATA_BASE_DIR: Path = os.path.join(PROJ_ROOT, "state_data")
+PROJ_ROOT: Path = Path(os.path.dirname(__file__))
+STATE_DATA_BASE_DIRPATH: Path = PROJ_ROOT / "state_data"
 STATE_GEOMETRY_FILENAME: str = "geometries.gpkg"
 STATE_GRAPH_FILENAME: str = "graph.json"
 SMD_SEED_DIRNAME: str = "smd_seeds"
@@ -19,15 +19,15 @@ DISTINCT_COLORS: ListedColormap = ListedColormap(['#e6194b', '#3cb44b',
 '#808000', '#ffd8b1', '#000075', '#808080'])
 
 
-STATE_DIR = lambda state: os.path.join(STATE_DATA_BASE_DIR, state)
-STATE_GEOMETRY_PATH = lambda state: os.path.join(STATE_DIR(state), STATE_GEOMETRY_FILENAME)
-STATE_GRAPH_PATH = lambda state: os.path.join(STATE_DIR(state), STATE_GRAPH_FILENAME)
-SMD_SEEDS_DIR = lambda state: os.path.join(STATE_DIR(state), SMD_SEED_DIRNAME)
-MMD_SEEDS_DIR = lambda state: os.path.join(STATE_DIR(state), MMD_SEED_DIRNAME)
+STATE_DIRPATH = lambda state: STATE_DATA_BASE_DIRPATH / state
+STATE_GEOMETRY_FILEPATH = lambda state: STATE_DIRPATH(state) / STATE_GEOMETRY_FILENAME
+STATE_GRAPH_FILEPATH = lambda state: STATE_DIRPATH(state) / STATE_GRAPH_FILENAME
+SMD_SEEDS_DIRPATH = lambda state: STATE_DIRPATH(state) / SMD_SEED_DIRNAME
+MMD_SEEDS_DIRPATH = lambda state: STATE_DIRPATH(state) / MMD_SEED_DIRNAME
 SMD_ENSEMBLE_FILENAME = lambda ensemble: f"SMD-{ensemble.seed_type}-{ensemble.constraints}-{ensemble.n_recom_steps}-{ensemble.epsilon}"
 MMD_ENSEMBLE_FILENAME = lambda ensemble: f"MMD-{ensemble.seed_type}-{ensemble.constraints}-{ensemble.n_recom_steps}-{ensemble.epsilon}"
-SMD_ENSEMBLE_DIR = lambda state: os.path.join(STATE_DIR(state), "smd_ensembles")
-MMD_ENSEMBLE_DIR = lambda state: os.path.join(STATE_DIR(state), "mmd_ensembles")
+SMD_ENSEMBLE_DIRPATH = lambda state: STATE_DIRPATH(state) / "smd_ensembles"
+MMD_ENSEMBLE_DIRPATH = lambda state: STATE_DIRPATH(state) / "mmd_ensembles"
 
 STATES = {
         'AK': 'Alaska',

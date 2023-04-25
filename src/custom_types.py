@@ -4,7 +4,9 @@ from gerrychain import Partition, Graph
 from gerrychain.updaters import cut_edges, Tally
 from geopandas import GeoSeries
 from typing import Callable, Dict, Union
+from .modules.utils import is_path_in_proj
 from pathlib import Path
+import os
 import json
 import consts
 import logging
@@ -19,52 +21,54 @@ class VMDPartition(Partition):
     """Class that extends Gerrychain Partition, adding a dict field mapping
     districts to the number of representatives in that district"""
 
+    state: str
     district_reps: RepsPerDistrict
 
-    def __init__(self, district_reps: RepsPerDistrict, *args, **kwargs):
+    def __init__(self, state: str, district_reps: RepsPerDistrict, *args, **kwargs):
+        self.state = state
         self.district_reps = district_reps
         super(VMDPartition, self).__init__(*args, **kwargs)
 
     def flip(self, flips):
         """ Needed because original flip method won't copy over this subclass' new fields."""
 
-        return self.__class__(parent=self, flips=flips, district_reps=self.district_reps)
+        return self.__class__(parent=self, flips=flips, state=self.state, district_reps=self.district_reps)
 
     @staticmethod
-    def from_file(json_file: Path, graph_file: Path, geom_file: Path = None) -> VMDPartition:
+    def from_file(json_file: Path, load_geoms: bool = False) -> VMDPartition:
         """Loads partition data from json file and combines it with Graph data and optionally GeoSeries data."""
 
         logger.info(f"loading VMDPartition from {json_file}")
-        print(f"graph file = {graph_file}")
-        prec_graph: Graph = Graph.from_file(graph_file)
-        vmd_info: dict = self.from_json(open(json_file, "r").read())
-        print(f"vmdinfo: {vmd_info}")
-        if geom_file:
-            prec_graph.geometry = GeoSeries.from_file(geom_file)
-        return VMDPartition(graph=prec_graph,  # figure out if there's a way of initializing this without kwargs
-                            assignment=vmd_info.assignment,
-                            district_reps=vmd_info.district_reps,
+        return VMDPartition.from_json_dict(json.loads(open(json_file, "r").read()), load_geoms)
+
+    @staticmethod
+    def from_json_dict(json_dict: dict, load_geoms: bool = False) -> VMDPartition:
+        json_dict["assignment"] = {int(k): v for (k, v) in json_dict["assignment"].items()}
+        json_dict["district_reps"] = {int(k): v for (k, v) in json_dict["district_reps"].items()}
+        prec_graph: Graph = Graph.from_json(consts.STATE_GRAPH_FILEPATH(json_dict["state"]))
+        if load_geoms:
+            prec_graph.geometry = GeoSeries.from_file(consts.STATE_GEOMETRY_FILEPATH(json_dict["state"]))
+        return VMDPartition(graph=prec_graph,  
+                            assignment=json_dict["assignment"],
+                            state=json_dict["state"],
+                            district_reps=json_dict["district_reps"],
                             updaters={consts.CUT_EDGE_UPDATER: cut_edges,
                                       consts.POP_UPDATER: Tally(consts.POP_COL, consts.POP_UPDATER)})
 
-    # maybe pass in a "filename formatter" function here like SMD_ENSEMBLE_FILENAME()
-    def to_file(self, file: Path) -> str:
+    def to_file(self, file: Path) -> None: # maybe pass in a "filename formatter" function here like SMD_ENSEMBLE_FILENAME()
+        if not is_path_in_proj(file):
+            raise Exception("attempting to write in file outside of project directory")
         logger.info(f"saving VMDPartition to {file}")
-        open(file, "w+").write(json.dumps(self.to_dict()))
+        file.parent.mkdir(exist_ok=True, parents=True)
+        open(file, "w+").write(json.dumps(self.to_json_dict()))
 
-    def from_json(self, json_str: str) -> dict:
-        json_obj = json.loads(json_str)
-        json_obj.assignment = {int(k): v for k, v in json.assignment}
-        json_obj.district_reps = {int(k): v for k, v in json.assignment}
-        return json_obj
-
-    def to_dict(self) -> dict:
-        return {"assignment": dict(self.assignment), "district_reps": self.district_reps}
-
+    def to_json_dict(self) -> dict:
+        return {"assignment": dict(self.assignment), "district_reps": self.district_reps, "state": self.state}
+    
     def __repr__(self):
         number_of_parts = len(self)
         s = "s" if number_of_parts > 1 else ""
-        return "<%s [%d part%s], district reps: %s>" % (self.__class__.__name__, number_of_parts, s, str(self.district_reps))
+        return "<%s [%d part%s], state: %s, district reps: %s>" % (self.__class__.__name__, number_of_parts, s, self.state, str(self.district_reps))
 
 
 class Party(Enum):
@@ -154,41 +158,48 @@ class Ensemble():
     """
     Wrapper class for an ensemble, or collection of random maps. Contains fields
     to describe parameters used to generate ensemble and helper methods for
-    serializing to files.
+    serialization.
     """
 
     maps: list[Partition]
     n_recom_steps: int
     epsilon: float
     seed_type: str
-    constrants: str
+    constraints: str
 
     def __init__(self, maps: list[Partition], n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str]) -> None:
         self.maps = maps
         self.n_recom_steps = n_recom_steps
         self.epsilon = epsilon
         self.seed_type = seed_type
-        self.constrants = constraints
+        self.constraints = constraints
 
     @staticmethod
-    def from_file(file: Path):
-        logger.info(f"loading Ensemble from {file}")
+    def from_file(file: Path, load_geoms: bool = False) -> str:
+        return Ensemble.from_json_dict(json.loads(open(file, "r").read()), load_geoms)
 
-    def from_json(self, file_json: str) -> dict:
-        json_obj = json_obj.loads(file_json)
-        json_obj.maps = [VMDPartition.from_json(map) for map in json_obj.maps]
-        return json_obj
+    @staticmethod
+    def from_json_dict(json_dict: dict, load_geoms: bool = False) -> VMDPartition:
+        json_dict["maps"] = [VMDPartition.from_json_dict(map, load_geoms) for map in json_dict["maps"]]
+        return Ensemble(json_dict["maps"], 
+                        json_dict["n_recom_steps"],
+                        json_dict["epsilon"], 
+                        json_dict["seed_type"], 
+                        json_dict["constraints"])
 
-    def to_dict(self) -> str:
-        return {"maps": [map.to_dict() for map in self.maps],
+    def to_file(self, file: Path) -> None: 
+        if not is_path_in_proj(file):
+            raise Exception("attempting to write in file outside of project directory")
+        logger.info(f"saving Ensemble to {file}")
+        file.parent.mkdir(exist_ok=True, parents=True)
+        open(file, "w+").write(json.dumps(self.to_json_dict()))
+
+    def to_json_dict(self) -> dict: 
+        return {"maps": [map.to_json_dict() for map in self.maps],
                 "n_recom_steps": self.n_recom_steps,
                 "epsilon": self.epsilon,
                 "seed_type": self.seed_type,
-                "constraints": self.constrants}
-
-    def to_file(self, file: Path) -> None:
-        logger.info(f"saving Ensemble to {file}")
-        open(file, "w").write(json.dumps(self.to_dict()))
+                "constraints": self.constraints}
 
 
 Precinct: type = Dict[str, Union[int, str]]

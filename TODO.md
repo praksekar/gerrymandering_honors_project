@@ -1,6 +1,8 @@
 # To do
 ## Organizational/Quality of Life
 ### In Progress
+    [ ] - initialize VMDPartition without kwargs
+    [ ] - Use / syntax instead of os.path.join
     [ ] - figure out how to properly disable external loggers (maybe create my own logger instead of using the root one)
     [ ] - use fstrings instead of modulo strings for printing
     [ ] - use autopep8 linter and configure settings in pyproject.toml

@@ -4,6 +4,8 @@ from gerrychain import Partition
 import matplotlib.pyplot as plt
 from .election import Candidate, Party
 from pptx import Presentation
+import logging 
+logger = logging.getLogger(__name__)
 import consts
 
 
@@ -17,7 +19,8 @@ def add_plot_to_pres(prs) -> None:
     print("slide added")
 
 
-def plot_partition(partition: Partition, prs: Presentation, cmap, show=False) -> None:
+def plot_partition(partition: Partition, cmap, prs: Presentation=None, show:bool=False) -> None:
+    logger.info(f"plotting {partition}")
     partition.plot(cmap=cmap)
     centroids: dict[int, tuple] = get_district_centroids(partition, partition.graph.geometry)
     for districtID, coord in centroids.items():

@@ -76,7 +76,7 @@ def gen_smd_adjacency_graph(smd_partition: Partition) -> nx.Graph:
 
 
 @linetimer(name="cutting smd graph into proportions specified by config", logger_func=logger.info)
-def cut_smd_adjacency_graph(graph: nx.Graph, mmd_config: RepsPerDistrict, cut_iterations: int = 100000, node_repeats: int = 20) -> nx.Graph:
+def cut_smd_adjacency_graph(graph: nx.Graph, mmd_config: RepsPerDistrict, cut_iterations: int = 1000000, node_repeats: int = 100) -> nx.Graph:
     """
     Attempts to partition input SMD adjacency graph into connected subgraphs
     with sizes that correspondingly match with each district's number of
@@ -150,6 +150,7 @@ def gen_mmd_seed_partition(smd_partition: VMDPartition, mmd_choosing_strategy: "
     return VMDPartition(
         graph=smd_partition.graph, 
         assignment=mmd_assignment,
+        state=smd_partition.state,
         district_reps=mmd_config,
         updaters={consts.CUT_EDGE_UPDATER: cut_edges, consts.POP_UPDATER: Tally(consts.POP_COL, consts.POP_UPDATER)}
     )

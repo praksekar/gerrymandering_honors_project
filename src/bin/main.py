@@ -8,7 +8,7 @@ from ..modules.plotting import plot_partition
 from ..modules.voting_models import party_line_voting_comparator
 import logging
 import consts
-from ..modules.data_processing import gen_smd_seeds
+from ..modules.data_processing import gen_smd_seeds, gen_mmd_seeds, gen_smd_ensembles, gen_mmd_ensembles
 import run_config
 from pprint import pprint
 from ..custom_types import VMDPartition, RepsPerDistrict, ElectionsResults, Ensemble
@@ -19,11 +19,21 @@ logging.getLogger("fiona").setLevel(logging.WARNING)
 
 def main() -> None:
     logger.info("starting main method")
-
     # test()
     # format_data()
     # gen_seeds()
-    gen_smd_ensemble("AL")
+    # gen_smd_ensemble("AL")
+    # a = consts.SMD_SEEDS_DIRPATH("AL") / "actual"
+    # graph = consts.STATE_GRAPH_FILEPATH("AL")
+    # geoms = consts.STATE_GEOMETRY_FILEPATH("AL")
+    # plot_partition(VMDPartition.from_file(a, graph, geoms), consts.DISTINCT_COLORS, show=True)
+    # gen_seeds()
+    # load_map(consts.SMD_SEEDS_DIRPATH("AL") / "actual")
+    # load_ensemble("AL")
+    # gen_smd_seeds()
+    # gen_mmd_seeds()
+    gen_smd_ensembles(["AL"])
+    gen_mmd_ensembles(["AL"])
     return
 
     # smd_partition: VMDPartition = load_smd_partition(run_config.STATE)
@@ -38,7 +48,7 @@ def main() -> None:
 
 
 def test() -> None:
-    print(consts.MMD_SEEDS_DIR("NY"))
+    print(consts.MMD_SEEDS_DIRPATH("NY"))
     return
     # seed_smd_partition: VMDPartition = load_smd_partition(run_config.STATE)
 
@@ -57,17 +67,28 @@ def test() -> None:
     # partition: VMDPartition = VMDPartition.fromJSON(os.path.join(consts.STATE_DATA_BASE_DIR, "AL", "smd_seeds", "2020_PRES"), "AL", load_geometries=True)
     # plot_partition(partition, prs=None, cmap=consts.DISTINCT_COLORS, show=True)
 
+def load_map(path: Path):
+    map: VMDPartition = VMDPartition.from_file(path, load_geoms=True)
+    plot_partition(map, consts.DISTINCT_COLORS, show=True)
+
 
 def gen_seeds() -> None:
     gen_smd_seeds()
 
 
 def gen_smd_ensemble(state: str) -> None:
-    json_file_path: Path = os.path.join(consts.SMD_ENSEMBLE_DIR(state), "actual")
+    json_file_path: Path = consts.SMD_SEEDS_DIRPATH(state) / "actual"
     #seed: VMDPartition = VMDPartition.from_file(json_file_path, consts.STATE_GRAPH_PATH(state), consts.STATE_GEOMETRY_PATH(state))
-    seed: VMDPartition = VMDPartition.from_file(json_file=json_file_path, graph_file=consts.STATE_GRAPH_PATH(state))
+    seed: VMDPartition = VMDPartition.from_file(json_file_path)
     ensemble: Ensemble = gen_ensemble(seed, 10, 10, 0.01, "aaa", [])
-    ensemble.to_file(os.path.join(consts.SMD_ENSEMBLE_DIR(state), consts.SMD_ENSEMBLE_FILENAME(ensemble)))
+    ensemble.to_file(consts.SMD_ENSEMBLE_DIRPATH(state) / consts.SMD_ENSEMBLE_FILENAME(ensemble))
+
+
+def load_ensemble(state: str) -> None:
+    epath = consts.SMD_ENSEMBLE_DIRPATH("AL") / "SMD-aaa-[]-10-0.01"
+    e = Ensemble.from_file(epath, load_geoms=True)
+    for map in e.maps:
+        plot_partition(map, consts.DISTINCT_COLORS, show=True)
 
 
 if __name__ == "__main__":
