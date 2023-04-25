@@ -50,49 +50,43 @@ as well as the generated seed districts, ensembles in the serialized VMDPartitio
 """
 
 
-def gen_smd_seeds() -> None: 
+def gen_smd_seeds(states: list[str]) -> None: 
     """
     Generates first serialized VMDPartition .json files by taking the
     original Graph and saving their seed .jsons. Walks through each state
     directory and saves seed to seeds directory.
     """
 
-    state_subpathnames: list[str] = [ f.path for f in os.scandir(consts.STATE_DATA_BASE_DIRPATH) if f.is_dir() ]
-    for state_pathname in state_subpathnames:
-        state_name: str = os.path.basename(os.path.normpath(state_pathname))
-        prec_graph: Graph = Graph.from_json(os.path.join(consts.STATE_DIRPATH(state_name), consts.STATE_GRAPH_FILENAME)) 
+    for state in states:
+        prec_graph: Graph = Graph.from_json(os.path.join(consts.STATE_DIRPATH(state), consts.STATE_GRAPH_FILENAME)) 
         n_districts: int = len(Partition(graph=prec_graph, assignment=consts.DISTRICT_NO_COL).parts) # find a cleaner way of counting the number of districts
         partition: VMDPartition = VMDPartition(graph=prec_graph, 
                                                assignment=consts.DISTRICT_NO_COL, 
-                                               state=state_name, 
+                                               state=state, 
                                                district_reps=dict.fromkeys(range(1, n_districts+1), 1),
                                                updaters={consts.CUT_EDGE_UPDATER: cut_edges, consts.POP_UPDATER: Tally(consts.POP_COL, consts.POP_UPDATER)})
-        os.makedirs(consts.SMD_SEEDS_DIRPATH(state_name), exist_ok=True)
-        partition.to_file(consts.SMD_SEEDS_DIRPATH(state_name) / "actual") 
+        os.makedirs(consts.SMD_SEEDS_DIRPATH(state), exist_ok=True)
+        partition.to_file(consts.SMD_SEEDS_DIRPATH(state) / "actual") 
 
-def gen_mmd_seeds() -> None:
+
+def gen_mmd_seeds(states: list[str]) -> None:
     """Loads each VMDPartition .json SMD seed, converts it to an MMD partition, and saves it to a file."""
-    state_subpathnames: list[str] = [ f.path for f in os.scandir(consts.STATE_DATA_BASE_DIRPATH) if f.is_dir() ]
-    for state_pathname in state_subpathnames:
-        state_name: str = os.path.basename(os.path.normpath(state_pathname))
-        smd_seed: VMDPartition = VMDPartition.from_file(consts.SMD_SEEDS_DIRPATH(state_name) / "actual")
+
+    for state in states:
+        smd_seed: VMDPartition = VMDPartition.from_file(consts.SMD_SEEDS_DIRPATH(state) / "actual")
         mmd_seed: VMDPartition = gen_mmd_seed_partition(smd_seed, pick_HR_3863_desired_mmd_config)
-        mmd_seed.to_file(consts.MMD_SEEDS_DIRPATH(state_name) /  "pick_HR_3863_desired_mmd_config")
+        mmd_seed.to_file(consts.MMD_SEEDS_DIRPATH(state) /  "pick_HR_3863_desired_mmd_config")
+
         
 def gen_smd_ensembles(states: list[str]) -> None:
     for state in states:
         smd_seed: VMDPartition = VMDPartition.from_file(consts.SMD_SEEDS_DIRPATH(state) / "actual")
-        ensemble: Ensemble = gen_ensemble(smd_seed, 10, 9, 0.01, "actual", [])
+        ensemble: Ensemble = gen_ensemble(smd_seed, 1000, 10000, 0.005, "actual", [])
         ensemble.to_file(consts.SMD_ENSEMBLE_DIRPATH(state) / consts.SMD_ENSEMBLE_FILENAME(ensemble))
 
 
 def gen_mmd_ensembles(states: list[str]) -> None:
     for state in states:
         mmd_seed: VMDPartition = VMDPartition.from_file(consts.MMD_SEEDS_DIRPATH(state) / "pick_HR_3863_desired_mmd_config")
-        ensemble: Ensemble = gen_ensemble(mmd_seed, 10, 9, 0.01, "pick_HR_3863_desired_mmd_config", [])
+        ensemble: Ensemble = gen_ensemble(mmd_seed, 1000, 10000, 0.005, "pick_HR_3863_desired_mmd_config", [])
         ensemble.to_file(consts.MMD_ENSEMBLE_DIRPATH(state) / consts.MMD_ENSEMBLE_FILENAME(ensemble))
-
-
-
-
-

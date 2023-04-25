@@ -46,7 +46,7 @@ def pick_HR_3863_desired_mmd_config(configs: list[RepsPerDistrict]) -> RepsPerDi
     districts with size 4 per H.R. 3863, SEC. 313, part (a)(1) E and F:
     https://www.congress.gov/bill/117th-congress/house-bill/3863/text#H7D73E395901B469987ACBAB28019B9B9
     """
-    max_five = max([list(c.values()).count(5) for c in configs])
+    max_five = max([list(c.values()).count(5) for c in configs]) # this function needs to handle cases where no 5 district config exists!
     max_five_configs = [c for c in configs if list(c.values()).count(5) == max_five] 
     return min(max_five_configs, key=lambda c: list(c.values()).count(4))
 
