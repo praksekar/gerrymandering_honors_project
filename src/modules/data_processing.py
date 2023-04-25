@@ -69,24 +69,27 @@ def gen_smd_seeds(states: list[str]) -> None:
         partition.to_file(consts.SMD_SEEDS_DIRPATH(state) / "actual") 
 
 
-def gen_mmd_seeds(states: list[str]) -> None:
-    """Loads each VMDPartition .json SMD seed, converts it to an MMD partition, and saves it to a file."""
+def gen_mmd_seeds(mmd_choosing_strategy, states: list[str]) -> None:
+    """
+    Loads each VMDPartition .json SMD seed, converts it to an MMD partition
+    using the mmd_choosing_strategy, and saves it to a file.
+    """
 
     for state in states:
         smd_seed: VMDPartition = VMDPartition.from_file(consts.SMD_SEEDS_DIRPATH(state) / "actual")
-        mmd_seed: VMDPartition = gen_mmd_seed_partition(smd_seed, pick_HR_3863_desired_mmd_config)
-        mmd_seed.to_file(consts.MMD_SEEDS_DIRPATH(state) /  "pick_HR_3863_desired_mmd_config")
+        mmd_seed: VMDPartition = gen_mmd_seed_partition(smd_seed, mmd_choosing_strategy)
+        mmd_seed.to_file(consts.MMD_SEEDS_DIRPATH(state) / mmd_choosing_strategy.__name__)
 
         
-def gen_smd_ensembles(states: list[str]) -> None:
+def gen_smd_ensembles(ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str], states: list[str]) -> None:
     for state in states:
-        smd_seed: VMDPartition = VMDPartition.from_file(consts.SMD_SEEDS_DIRPATH(state) / "actual")
-        ensemble: Ensemble = gen_ensemble(smd_seed, 1000, 10000, 0.005, "actual", [])
+        smd_seed: VMDPartition = VMDPartition.from_file(consts.SMD_SEEDS_DIRPATH(state) / seed_type)
+        ensemble: Ensemble = gen_ensemble(smd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints)
         ensemble.to_file(consts.SMD_ENSEMBLE_DIRPATH(state) / consts.SMD_ENSEMBLE_FILENAME(ensemble))
 
 
-def gen_mmd_ensembles(states: list[str]) -> None:
+def gen_mmd_ensembles(ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str], states: list[str]) -> None:
     for state in states:
-        mmd_seed: VMDPartition = VMDPartition.from_file(consts.MMD_SEEDS_DIRPATH(state) / "pick_HR_3863_desired_mmd_config")
-        ensemble: Ensemble = gen_ensemble(mmd_seed, 1000, 10000, 0.005, "pick_HR_3863_desired_mmd_config", [])
+        mmd_seed: VMDPartition = VMDPartition.from_file(consts.MMD_SEEDS_DIRPATH(state) / seed_type)
+        ensemble: Ensemble = gen_ensemble(mmd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints)
         ensemble.to_file(consts.MMD_ENSEMBLE_DIRPATH(state) / consts.MMD_ENSEMBLE_FILENAME(ensemble))

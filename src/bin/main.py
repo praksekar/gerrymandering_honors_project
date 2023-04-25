@@ -31,10 +31,11 @@ def main() -> None:
     # load_map(consts.SMD_SEEDS_DIRPATH("AL") / "actual")
     # load_ensemble("AL")
     states = ["NY"] #"NC", "FL", "PA", "MD", "LA", "GA"]
+
     gen_smd_seeds(states)
-    gen_mmd_seeds(states)
-    gen_smd_ensembles(states)
-    gen_mmd_ensembles(states)
+    gen_mmd_seeds(states, pick_HR_3863_desired_mmd_config)
+    gen_smd_ensembles(1000, 10000, 0.005, "actual", [], states)
+    gen_mmd_ensembles(1000, 10000, 0.005, "pick_HR_3863_desired_mmd_config", [], states)
     return
 
     # smd_partition: VMDPartition = load_smd_partition(run_config.STATE)

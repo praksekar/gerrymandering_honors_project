@@ -54,7 +54,7 @@ def vmd_recom(partition: VMDPartition, epsilon: float) -> Partition:
     return partition.flip(flips)
 
 
-def split_graph_by_pop(graph: nx.Graph, pop_target: int, graph_pop: int, epsilon: float, node_repeats: int = 50) -> tuple[tuple[list[int], list[int]], bool]:
+def split_graph_by_pop(graph: nx.Graph, pop_target: int, graph_pop: int, epsilon: float, node_repeats: int = 500) -> tuple[tuple[list[int], list[int]], bool]:
     pop_rng = (pop_target * (1 - epsilon), pop_target * (1 + epsilon))
     graph_edges = list(graph.edges)
     for i in range(node_repeats):
