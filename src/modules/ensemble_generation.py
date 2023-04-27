@@ -1,5 +1,6 @@
 import random
 from .utils import rand_spanning_tree
+from itertools import product
 from gerrychain import Partition, Graph, MarkovChain 
 from gerrychain.accept import always_accept
 from functools import partial
@@ -9,6 +10,8 @@ import logging
 from linetimer import CodeTimer
 import consts
 logger = logging.getLogger(__name__)
+import multiprocessing
+from multiprocessing import Pool
 
 
 def vmd_recom(partition: VMDPartition, epsilon: float) -> Partition:
@@ -85,7 +88,7 @@ def find_cut(graph: Graph, tree: Graph, curr_node: int, parent: int, graph_pop: 
     return (sum, None)
 
 
-def gen_random_map(seed_partition: Partition, n_recom_steps: int, epsilon: float, constraints: list[str]) -> Partition:
+def gen_random_map(seed_partition: VMDPartition, n_recom_steps: int, epsilon: float, constraints: list[str]) -> VMDPartition:
     chain = MarkovChain( 
         partial(vmd_recom, epsilon=epsilon),
         constraints,
@@ -96,9 +99,36 @@ def gen_random_map(seed_partition: Partition, n_recom_steps: int, epsilon: float
     for partition in chain:
         continue
     return partition
-
+    
 
 def gen_ensemble(seed_partition: VMDPartition, ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str]) -> Ensemble:
     logger.info(f"generating ensemble of size {ensemble_size}")
     maps: list[VMDPartition] = [gen_random_map(seed_partition, n_recom_steps, epsilon, constraints) for _ in range(ensemble_size)]
+    return Ensemble(maps, n_recom_steps, epsilon, seed_type, constraints)
+
+
+def gen_random_map_json_dict(seed_partition: dict, n_recom_steps: int, epsilon: float, constraints: list[str]) -> dict:
+    seed_partition = VMDPartition.from_json_dict(seed_partition)
+    chain = MarkovChain( 
+        partial(vmd_recom, epsilon=epsilon),
+        constraints,
+        always_accept,
+        seed_partition,
+        total_steps=n_recom_steps
+    )
+    for i in range(10):
+        try:
+            for partition in chain:
+                continue
+        except:
+            logger.warning(f"generating random map failed after {i} attempts; retrying")
+    return partition.to_json_dict()
+
+
+def gen_ensemble_parallel(seed_partition: VMDPartition, ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str], n_workers: int) -> Ensemble:
+    logger.info(f"generating ensemble of size {ensemble_size} in parallel with {n_workers} workers")
+    args = (seed_partition.to_json_dict(), n_recom_steps, epsilon, constraints)
+    with Pool(n_workers) as p:
+        json_maps = p.starmap(gen_random_map_json_dict, [args for _ in range(ensemble_size)])
+        maps = p.map(VMDPartition.from_json_dict, json_maps)
     return Ensemble(maps, n_recom_steps, epsilon, seed_type, constraints)

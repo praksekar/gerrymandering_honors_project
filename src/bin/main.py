@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from linetimer import linetimer
 from gerrychain import Partition
 from ..modules.election import run_statewide_district_elections_on_map, multi_seat_ranked_choice_tabulation, run_many_statewide_elections_on_ensemble, single_seat_plurality_tabulation
 from ..modules.mmd_seed_generation import gen_mmd_seed_partition, pick_HR_3863_desired_mmd_config, pick_max_districts_config
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger("fiona").setLevel(logging.WARNING)
 
 
+@linetimer(name=f"running main method", logger_func=logger.info)
 def main() -> None:
     logger.info("starting main method")
     # test()
@@ -32,10 +34,10 @@ def main() -> None:
     # load_ensemble("AL")
     states = ["NY"] #"NC", "FL", "PA", "MD", "LA", "GA"]
 
-    gen_smd_seeds(states)
-    gen_mmd_seeds(states, pick_HR_3863_desired_mmd_config)
-    gen_smd_ensembles(1000, 10000, 0.005, "actual", [], states)
-    gen_mmd_ensembles(1000, 10000, 0.005, "pick_HR_3863_desired_mmd_config", [], states)
+    # gen_smd_seeds(states)
+    # gen_mmd_seeds(pick_HR_3863_desired_mmd_config, states)
+    gen_smd_ensembles(10, 10, 0.01, "actual", [], states, 8)
+    gen_mmd_ensembles(10, 10, 0.01, "pick_HR_3863_desired_mmd_config", [], states, 8)
     return
 
     # smd_partition: VMDPartition = load_smd_partition(run_config.STATE)

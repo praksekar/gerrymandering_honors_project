@@ -6,6 +6,7 @@ from geopandas import GeoSeries
 from typing import Callable, Dict, Union
 from .modules.utils import is_path_in_proj
 from pathlib import Path
+import jsonpickle
 import os
 import json
 import consts
@@ -64,6 +65,25 @@ class VMDPartition(Partition):
 
     def to_json_dict(self) -> dict:
         return {"assignment": dict(self.assignment), "district_reps": self.district_reps, "state": self.state}
+
+    # def __getitem__(self, key): # copy pasted from internet; allows pickling
+    #     """Allows accessing the values of updaters computed for this
+    #     Partition instance.
+
+    #     :param key: Property to access.
+    #     """
+    #     try:
+    #         if key not in self._cache:
+    #             self._cache[key] = self.updaters[key](self)
+    #         return self._cache[key]
+    #     except:
+    #         return None
+
+    # def __getattr__(self, key): # copy pasted from internet; allows pickling
+    #     _k = self.__getitem__(key)
+    #     if _k == None:
+    #         raise AttributeError
+    #     return _k
     
     def __repr__(self):
         number_of_parts = len(self)
@@ -165,7 +185,7 @@ class Ensemble():
     n_recom_steps: int
     epsilon: float
     seed_type: str
-    constraints: str
+    constraints: list[str]
 
     def __init__(self, maps: list[Partition], n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str]) -> None:
         self.maps = maps
@@ -206,4 +226,26 @@ Precinct: type = Dict[str, Union[int, str]]
 CurriedVotingComparator: type = Callable[[Candidate, Candidate], int]
 VotingComparator: type = Callable[[Candidate, Candidate, Voter], int]
 Tabulator: type = Callable[[list[Ballot], list[Candidate], int], list[Candidate]]
-ElectionsResults: type = list[list[Candidate]]
+
+class ElectionsResults:
+    results: list[list[Candidate]]
+    voting_model: str
+    ensemble_name: str
+    tabulator: str 
+
+    def __init__(self, results: list[list[Candidate]], voting_model: VotingComparator, ensemble: Ensemble, tabulator: Tabulator) -> None:
+        self.results = results
+        self.voting_model = voting_model
+        self.ensemble = ensemble
+        self.tabulator = tabulator
+    
+    @staticmethod
+    def from_file(file: Path) -> str:
+        return jsonpickle.decode(open(file, "r").read())
+
+    def to_file(self, file: Path) -> None:
+        if not is_path_in_proj(file):
+            raise Exception("attempting to write in file outside of project directory")
+        logger.info(f"saving ElectionsResults to {file}")
+        file.parent.mkdir(exist_ok=True, parents=True)
+        open(file, "w+").write(jsonpickle.encode())

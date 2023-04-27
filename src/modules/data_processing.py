@@ -8,7 +8,7 @@ from ..custom_types import VMDPartition, ElectionsResults, Ensemble
 from gerrychain.updaters import Tally, cut_edges
 import logging
 logger = logging.getLogger(__name__)
-from .ensemble_generation import gen_ensemble 
+from .ensemble_generation import gen_ensemble, gen_ensemble_parallel
 from .mmd_seed_generation import gen_mmd_seed_partition, pick_HR_3863_desired_mmd_config 
 import json
 import jsonpickle
@@ -81,15 +81,17 @@ def gen_mmd_seeds(mmd_choosing_strategy, states: list[str]) -> None:
         mmd_seed.to_file(consts.MMD_SEEDS_DIRPATH(state) / mmd_choosing_strategy.__name__)
 
         
-def gen_smd_ensembles(ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str], states: list[str]) -> None:
+def gen_smd_ensembles(ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str], states: list[str], n_workers: int) -> None:
     for state in states:
         smd_seed: VMDPartition = VMDPartition.from_file(consts.SMD_SEEDS_DIRPATH(state) / seed_type)
-        ensemble: Ensemble = gen_ensemble(smd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints)
-        ensemble.to_file(consts.SMD_ENSEMBLE_DIRPATH(state) / consts.SMD_ENSEMBLE_FILENAME(ensemble))
+        ensemble: Ensemble = gen_ensemble_parallel(smd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints, n_workers)
+        # ensemble: Ensemble = gen_ensemble(smd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints)
+        ensemble.to_file(consts.SMD_ENSEMBLE_DIRPATH(state) / consts.ENSEMBLE_FILENAME(ensemble))
 
 
-def gen_mmd_ensembles(ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str], states: list[str]) -> None:
+def gen_mmd_ensembles(ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str], states: list[str], n_workers: int) -> None:
     for state in states:
         mmd_seed: VMDPartition = VMDPartition.from_file(consts.MMD_SEEDS_DIRPATH(state) / seed_type)
-        ensemble: Ensemble = gen_ensemble(mmd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints)
-        ensemble.to_file(consts.MMD_ENSEMBLE_DIRPATH(state) / consts.MMD_ENSEMBLE_FILENAME(ensemble))
+        ensemble: Ensemble = gen_ensemble_parallel(mmd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints, n_workers)
+        # ensemble: Ensemble = gen_ensemble(mmd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints)
+        ensemble.to_file(consts.MMD_ENSEMBLE_DIRPATH(state) / consts.ENSEMBLE_FILENAME(ensemble))
