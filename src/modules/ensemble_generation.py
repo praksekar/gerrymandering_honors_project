@@ -120,9 +120,10 @@ def gen_random_map_json_dict(seed_partition: dict, n_recom_steps: int, epsilon: 
         try:
             for partition in chain:
                 continue
+            return partition.to_json_dict()
         except:
-            logger.warning(f"generating random map failed after {i} attempts; retrying")
-    return partition.to_json_dict()
+            logger.warning(f"generating random map failed; retrying")
+    raise Exception("generating random map failed after many attempts")
 
 
 def gen_ensemble_parallel(seed_partition: VMDPartition, ensemble_size: int, n_recom_steps: int, epsilon: float, seed_type: str, constraints: list[str], n_workers: int) -> Ensemble:
@@ -130,5 +131,6 @@ def gen_ensemble_parallel(seed_partition: VMDPartition, ensemble_size: int, n_re
     args = (seed_partition.to_json_dict(), n_recom_steps, epsilon, constraints)
     with Pool(n_workers) as p:
         json_maps = p.starmap(gen_random_map_json_dict, [args for _ in range(ensemble_size)])
-        maps = p.map(VMDPartition.from_json_dict, json_maps)
+    with CodeTimer("converting json_maps to VMDPartitions", logger_func=logger.debug):
+        maps = [VMDPartition.from_json_dict(json_map) for json_map in json_maps]
     return Ensemble(maps, n_recom_steps, epsilon, seed_type, constraints)
