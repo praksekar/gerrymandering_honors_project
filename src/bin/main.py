@@ -5,11 +5,11 @@ from gerrychain import Partition
 from ..modules.election import run_statewide_district_elections_on_map, multi_seat_ranked_choice_tabulation, run_many_statewide_elections_on_ensemble, single_seat_plurality_tabulation
 from ..modules.mmd_seed_generation import gen_mmd_seed_partition, pick_HR_3863_desired_mmd_config, pick_max_districts_config
 from ..modules.ensemble_generation import gen_ensemble
-from ..modules.plotting import plot_partition
+from ..modules.plotting import plot_partition, plot_ensemble, plot_party_split
 from ..modules.voting_models import party_line_voting_comparator
 import logging
 import consts
-from ..modules.data_processing import gen_smd_seeds, gen_mmd_seeds, gen_smd_ensembles, gen_mmd_ensembles
+from ..modules.data_processing import gen_smd_seeds, gen_mmd_seeds, gen_smd_ensembles, gen_mmd_ensembles, run_election
 import run_config
 from pprint import pprint
 from ..custom_types import VMDPartition, RepsPerDistrict, ElectionsResults, Ensemble
@@ -33,9 +33,14 @@ def main() -> None:
     # load_map(consts.SMD_SEEDS_DIRPATH("AL") / "actual")
     # load_ensemble("AL")
     states = ["NY"] #"NC", "FL", "PA", "MD", "LA", "GA"]
-    time_worker_amounts()
+    # time_worker_amounts()
     # gen_smd_seeds(states)
     # gen_mmd_seeds(pick_HR_3863_desired_mmd_config, states)
+    # gen_smd_ensembles(100, 10, 0.01, "actual", [], states, 6)
+    run_election(consts.SMD_ENSEMBLE_DIRPATH("NY") / "actual-100-[]-1000-0.01", party_line_voting_comparator, single_seat_plurality_tabulation, 6, "NY")
+    electionsresults = ElectionsResults.from_file(consts.ELECTIONSRESULTS_DIRPATH("NY") / "actual-10-[]-10-0.01-party_line_voting_comparator-single_seat_plurality_tabulation")
+    plot_party_split(electionsresults, 26, consts.PLOT_DIRPATH / (consts.ELECTIONSRESULTS_FILENAME(electionsresults) + ".png"))
+    # plot_ensemble(Ensemble.from_file(consts.MMD_ENSEMBLE_DIRPATH("NY") / "pick_HR_3863_desired_mmd_config-10-[]-10-0.01", load_geoms=True), show=True)
     return
 
     # smd_partition: VMDPartition = load_smd_partition(run_config.STATE)

@@ -5,15 +5,17 @@ from ..custom_types import VotingComparator, VMDPartition, RepsPerDistrict, Prec
 import run_config
 import logging
 from functools import partial, cmp_to_key
+import consts
 from pprint import pprint
 from .utils import round_up, round_down
 logger = logging.getLogger(__name__)
-from ..custom_types import Ballot, Candidate, Party, Tabulator
+from ..custom_types import Ballot, Candidate, Party, Tabulator, Ensemble
 import itertools
 flatten = itertools.chain.from_iterable
+from multiprocessing import Pool
 
 
-@linetimer(name=f"running multi seat ranked choice tabulation", logger_func=logger.debug)
+# @linetimer(name=f"running multi seat ranked choice tabulation", logger_func=logger.debug)
 def multi_seat_ranked_choice_tabulation(ballots: list[Ballot], candidates: set[Candidate], n_winners: int) -> list[Candidate]:
     """
     Runs a multi-seat ranked choice election as defined in SEC. 332 of H.R. 3863: 
@@ -76,12 +78,12 @@ def multi_seat_ranked_choice_tabulation(ballots: list[Ballot], candidates: set[C
     return list(winners | continuing_candidates)
 
 
-@linetimer(name=f"running single seat plurality tabulation", logger_func=logger.debug)
+# @linetimer(name=f"running single seat plurality tabulation", logger_func=logger.debug)
 def single_seat_plurality_tabulation(ballots: list[Ballot], candidates: set[Candidate], n_winners: int) -> list[Candidate]:
     return [mode([b.curr_choice() for b in ballots])]
 
 
-@linetimer(name=f"generating candidates", logger_func=logger.debug)
+# @linetimer(name=f"generating candidates", logger_func=logger.debug)
 def gen_candidates(n_seats: int, districtID: int) -> set[Candidate]: 
     """
     Generates a list of n_seats candidates from each party. This can be used for
@@ -142,3 +144,18 @@ def run_statewide_district_elections_on_map(partition: VMDPartition, map_idx: in
 
 def run_many_statewide_elections_on_ensemble(ensemble: list[Partition], voting_model: VotingComparator, tabulator: Tabulator) -> ElectionsResults: 
     return [run_statewide_district_elections_on_map(m, i, voting_model, tabulator) for i, m in enumerate(ensemble)]
+    
+def run_statewide_district_elections_on_map_parallel(partition: dict, map_idx: int, voting_model: VotingComparator, tabulator: Tabulator) -> list[Candidate]:
+    partition = VMDPartition.from_json_dict(partition)
+    logger.info(f"running district elections on ensemble map {map_idx}")
+    winners: list[Candidate] = list(flatten([run_district_election(partition, p, voting_model, tabulator) for p in sorted(partition.parts.keys())]))
+    logger.debug(f"state winners: {winners}")
+    return winners
+
+def run_many_statewide_elections_on_ensemble_parallel(ensemble: Ensemble, voting_model: VotingComparator, tabulator: Tabulator, n_workers: int) -> ElectionsResults: 
+    args = []
+    for i in range(len(ensemble.maps)):
+        args.append((ensemble.maps[i].to_json_dict(), i, voting_model, tabulator))
+    with Pool(n_workers) as p:
+        results = p.starmap(run_statewide_district_elections_on_map_parallel, args)
+    return ElectionsResults(results, voting_model.__name__, consts.ENSEMBLE_FILENAME(ensemble), tabulator.__name__)

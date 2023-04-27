@@ -26,9 +26,11 @@ STATE_GRAPH_FILEPATH = lambda state: STATE_DIRPATH(state) / STATE_GRAPH_FILENAME
 SMD_SEEDS_DIRPATH = lambda state: STATE_DIRPATH(state) / SMD_SEED_DIRNAME
 MMD_SEEDS_DIRPATH = lambda state: STATE_DIRPATH(state) / MMD_SEED_DIRNAME
 ENSEMBLE_FILENAME = lambda ensemble: f"{ensemble.seed_type}-{len(ensemble.maps)}-{ensemble.constraints}-{ensemble.n_recom_steps}-{ensemble.epsilon}"
-ELECTIONSRESULTS_FILENAME = lambda electionsresults: f"{ENSEMBLE_FILENAME(electionsresults.ensemble)}-{electionsresults.voting_model.__name__}-{electionsresults.tabulator.__name__}"
+ELECTIONSRESULTS_FILENAME = lambda electionsresults: f"{electionsresults.ensemble_name}-{electionsresults.voting_model}-{electionsresults.tabulator}"
+ELECTIONSRESULTS_DIRPATH = lambda state: STATE_DIRPATH(state) / "elections_results"
 SMD_ENSEMBLE_DIRPATH = lambda state: STATE_DIRPATH(state) / "smd_ensembles"
 MMD_ENSEMBLE_DIRPATH = lambda state: STATE_DIRPATH(state) / "mmd_ensembles"
+PLOT_DIRPATH = PROJ_ROOT / "plots"
 
 STATES = {
         'AK': 'Alaska',

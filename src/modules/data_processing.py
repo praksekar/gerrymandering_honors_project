@@ -4,12 +4,13 @@ import os
 import consts
 from pathlib import Path
 import run_config
-from ..custom_types import VMDPartition, ElectionsResults, Ensemble
+from ..custom_types import VMDPartition, ElectionsResults, Ensemble, VotingComparator, Tabulator
 from gerrychain.updaters import Tally, cut_edges
 import logging
 logger = logging.getLogger(__name__)
 from .ensemble_generation import gen_ensemble, gen_ensemble_parallel
 from .mmd_seed_generation import gen_mmd_seed_partition, pick_HR_3863_desired_mmd_config 
+from .election import run_many_statewide_elections_on_ensemble_parallel
 import json
 import jsonpickle
 
@@ -95,3 +96,9 @@ def gen_mmd_ensembles(ensemble_size: int, n_recom_steps: int, epsilon: float, se
         ensemble: Ensemble = gen_ensemble_parallel(mmd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints, n_workers)
         # ensemble: Ensemble = gen_ensemble(mmd_seed, ensemble_size, n_recom_steps, epsilon, seed_type, constraints)
         ensemble.to_file(consts.MMD_ENSEMBLE_DIRPATH(state) / consts.ENSEMBLE_FILENAME(ensemble))
+
+
+def run_election(ensemble_path: Path, voting_model: VotingComparator, tabulator: Tabulator, n_workers: int, state: str) -> None:
+    ensemble = Ensemble.from_file(ensemble_path)
+    electionsresults: ElectionsResults = run_many_statewide_elections_on_ensemble_parallel(ensemble, voting_model, tabulator, n_workers)
+    electionsresults.to_file(consts.ELECTIONSRESULTS_DIRPATH(state) / consts.ELECTIONSRESULTS_FILENAME(electionsresults))

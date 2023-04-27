@@ -196,6 +196,7 @@ class Ensemble():
 
     @staticmethod
     def from_file(file: Path, load_geoms: bool = False) -> str:
+        logger.info(f"loading Ensemble from {file}")
         return Ensemble.from_json_dict(json.loads(open(file, "r").read()), load_geoms)
 
     @staticmethod
@@ -227,16 +228,17 @@ CurriedVotingComparator: type = Callable[[Candidate, Candidate], int]
 VotingComparator: type = Callable[[Candidate, Candidate, Voter], int]
 Tabulator: type = Callable[[list[Ballot], list[Candidate], int], list[Candidate]]
 
+
 class ElectionsResults:
     results: list[list[Candidate]]
     voting_model: str
     ensemble_name: str
     tabulator: str 
 
-    def __init__(self, results: list[list[Candidate]], voting_model: VotingComparator, ensemble: Ensemble, tabulator: Tabulator) -> None:
+    def __init__(self, results: list[list[Candidate]], voting_model: VotingComparator, ensemble_name: str, tabulator: Tabulator) -> None:
         self.results = results
         self.voting_model = voting_model
-        self.ensemble = ensemble
+        self.ensemble_name = ensemble_name
         self.tabulator = tabulator
     
     @staticmethod
@@ -248,4 +250,4 @@ class ElectionsResults:
             raise Exception("attempting to write in file outside of project directory")
         logger.info(f"saving ElectionsResults to {file}")
         file.parent.mkdir(exist_ok=True, parents=True)
-        open(file, "w+").write(jsonpickle.encode())
+        open(file, "w+").write(jsonpickle.encode(self))

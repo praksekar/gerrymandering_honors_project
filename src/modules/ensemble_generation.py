@@ -133,9 +133,9 @@ def gen_ensemble_parallel(seed_partition: VMDPartition, ensemble_size: int, n_re
     with Pool(n_workers) as p:
         json_maps = p.starmap(gen_random_map_json_dict, [args for _ in range(ensemble_size)])
     with CodeTimer("converting json_maps to VMDPartitions", logger_func=logger.debug):
-        p = ThreadPool(n_workers)
-        maps = p.map(VMDPartition.from_json_dict, json_maps)
-        # maps = [VMDPartition.from_json_dict(json_map) for json_map in json_maps]
+        # p = ThreadPool(n_workers)
+        # maps = p.map(VMDPartition.from_json_dict, json_maps)
+        maps = [VMDPartition.from_json_dict(json_map) for json_map in json_maps]
     return Ensemble(maps, n_recom_steps, epsilon, seed_type, constraints)
 
 

@@ -2,12 +2,15 @@ from matplotlib.pyplot import hist
 from geopandas import GeoSeries
 from gerrychain import Partition 
 import matplotlib.pyplot as plt
+from ..custom_types import ElectionsResults
 from .election import Candidate, Party
 from pptx import Presentation
 from ..custom_types import Ensemble
+from .utils import is_path_in_proj
 import logging 
 logger = logging.getLogger(__name__)
 import consts
+from pathlib import Path
 
 
 prs = Presentation() 
@@ -46,17 +49,21 @@ def get_district_centroids(partition: Partition, precinct_geometries: GeoSeries)
     return district_centroids
 
 
-def plot_party_split(elections_results: list[list[Candidate]], file_path: str): 
+def plot_party_split(elections_results: ElectionsResults, n_districts: int, file: Path): 
     dem_counts: list[int] = []
-    for election_result in elections_results:
+    for election_result in elections_results.results:
         dem_count = 0
         for candidate in election_result:
             if candidate.party == Party.DEMOCRAT:
                 dem_count += 1
         dem_counts.append(dem_count)
     print("DEM COUNTS: " + str(dem_counts))
-    hist(dem_counts)
-    plt.savefig(file_path)
+    hist(dem_counts, range=(0, n_districts))
+    if not is_path_in_proj(file):
+        raise Exception("attempting to write in file outside of project directory")
+    logger.info(f"saving plot to {file}")
+    file.parent.mkdir(exist_ok=True, parents=True)
+    plt.savefig(file)
 
 
 def vote_seat_share_curve():
