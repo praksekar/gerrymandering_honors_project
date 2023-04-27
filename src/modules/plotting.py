@@ -4,6 +4,7 @@ from gerrychain import Partition
 import matplotlib.pyplot as plt
 from .election import Candidate, Party
 from pptx import Presentation
+from ..custom_types import Ensemble
 import logging 
 logger = logging.getLogger(__name__)
 import consts
@@ -19,9 +20,9 @@ def add_plot_to_pres(prs) -> None:
     print("slide added")
 
 
-def plot_partition(partition: Partition, cmap, prs: Presentation=None, show:bool=False) -> None:
+def plot_partition(partition: Partition, prs: Presentation=None, show: bool = False) -> None:
     logger.info(f"plotting {partition}")
-    partition.plot(cmap=cmap)
+    partition.plot(cmap=consts.DISTINCT_COLORS)
     centroids: dict[int, tuple] = get_district_centroids(partition, partition.graph.geometry)
     for districtID, coord in centroids.items():
         pop_frac = float(partition[consts.POP_UPDATER][districtID]/sum(partition[consts.POP_UPDATER].values())) * sum(partition.district_reps.values())
@@ -30,6 +31,11 @@ def plot_partition(partition: Partition, cmap, prs: Presentation=None, show:bool
         add_plot_to_pres(prs)
     if show:
         plt.show()
+
+
+def plot_ensemble(ensemble: Ensemble, prs: Presentation=None, show: bool = False) -> None:
+    for map in ensemble.maps:
+        plot_partition(map, prs=prs, show=show)
 
 
 def get_district_centroids(partition: Partition, precinct_geometries: GeoSeries) -> dict[int, tuple]:
