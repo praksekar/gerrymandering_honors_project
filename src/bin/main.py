@@ -1,6 +1,6 @@
 from pathlib import Path
 import os
-from linetimer import linetimer
+from linetimer import linetimer, CodeTimer
 from gerrychain import Partition
 from ..modules.election import run_statewide_district_elections_on_map, multi_seat_ranked_choice_tabulation, run_many_statewide_elections_on_ensemble, single_seat_plurality_tabulation
 from ..modules.mmd_seed_generation import gen_mmd_seed_partition, pick_HR_3863_desired_mmd_config, pick_max_districts_config
@@ -33,11 +33,9 @@ def main() -> None:
     # load_map(consts.SMD_SEEDS_DIRPATH("AL") / "actual")
     # load_ensemble("AL")
     states = ["NY"] #"NC", "FL", "PA", "MD", "LA", "GA"]
-
+    time_worker_amounts()
     # gen_smd_seeds(states)
     # gen_mmd_seeds(pick_HR_3863_desired_mmd_config, states)
-    gen_smd_ensembles(10, 10, 0.01, "actual", [], states, 8)
-    gen_mmd_ensembles(10, 10, 0.01, "pick_HR_3863_desired_mmd_config", [], states, 8)
     return
 
     # smd_partition: VMDPartition = load_smd_partition(run_config.STATE)
@@ -50,6 +48,13 @@ def main() -> None:
     # plot_partition(rand_smd_partition, prs=None, cmap=consts.DISTINCT_COLORS, show=True)
     # pprint(run_statewide_district_elections(rand_partition, mmd_config, party_line_voting))
 
+def time_worker_amounts() -> None:
+    states = ["NY"]
+    workers_nums = [7, 14, 28, 35]
+    for workers in workers_nums:
+        with CodeTimer(f"{workers} workers", logger_func=logger.debug):
+            gen_smd_ensembles(100, 100, 0.01, "actual", [], states, workers)
+            gen_mmd_ensembles(100, 100, 0.01, "pick_HR_3863_desired_mmd_config", [], states, workers)
 
 def test() -> None:
     print(consts.MMD_SEEDS_DIRPATH("NY"))
