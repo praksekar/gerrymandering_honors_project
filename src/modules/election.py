@@ -106,7 +106,7 @@ def gen_candidates(n_seats: int, districtID: int) -> set[Candidate]:
 
 
 def get_prec_voters(precinct: Precinct) -> list[Voter]:
-    return [Voter(Party.DEMOCRAT)]*precinct[run_config.DEM_VOTE_TALLY_COL] + [Voter(Party.REPUBLICAN)]*precinct[run_config.REP_VOTE_TALLY_COL]
+    return [Voter(Party.DEMOCRAT)]*int(precinct[run_config.DEM_VOTE_TALLY_COL]) + [Voter(Party.REPUBLICAN)]*int(precinct[run_config.REP_VOTE_TALLY_COL])
 
 
 def get_district_voters(partition: VMDPartition, districtID: int) -> list[Voter]:
